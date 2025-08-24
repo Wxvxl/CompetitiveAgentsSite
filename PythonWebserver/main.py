@@ -34,21 +34,6 @@ class RockPaperScissorGame:
             print("agent 2 win")
         else:
             print('tie')
-            
-class Agents:
-    def __init__(self):
-        pass
-    
-    def getAction():
-        pass
-
-class RandomAgents(Agents):
-    choices = ["r", "p", "s"]
-    def __init__(self):
-        super().__init__()
-    
-    def getAction(self):
-        return self.choices[random.randint(0,2)]
     
 def main():
     agent1 = RandomAgents()

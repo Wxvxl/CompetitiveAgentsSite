@@ -1,4 +1,4 @@
-from baseclass import Agents
+from PythonWebserver.baseclass import Agents
 import random
 
 class RandomAgents(Agents):

@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify
+from game import RockPaperScissorGame
 import psycopg2
 
 app = Flask(__name__)
@@ -12,6 +13,36 @@ def get_db_connection():
         host="localhost"     
     )
     return conn
+
+def load_agent(name):
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    cur.execute("SELECT code FROM scripts WHERE name = %s", (name,))
+    row = cur.fetchone()
+
+    cur.close()
+    conn.close()
+
+    if not row:
+        raise ValueError(f"No script found with name '{name}'")
+
+    code = row[0]
+    namespace = {}
+    exec(code, namespace) 
+
+    agent_class = None
+    for obj in namespace.values():
+        if isinstance(obj, type) and obj.__name__ != "Agents":
+            agent_class = obj
+            break
+
+
+    if agent_class is None:
+        raise ValueError("No class found in retrieved script")
+
+    agent_instance = agent_class()
+    return agent_instance
 
 @app.route("/upload", methods=["POST"])
 def upload_script():
@@ -61,10 +92,20 @@ def list_scripts():
             "id": r[0],
             "name": r[1],
             "groupname": r[2],
-            "code": r[3],               # code as text
+            "code": r[3],
         }
         for r in rows
     ]
     return jsonify(scripts)
+
+@app.route("/compete/<agent1>/<agent2>", methods=["GET"])
+def compete(agent1, agent2):
+    game = RockPaperScissorGame()
+    agent1_class = load_agent(agent1)
+    agent2_class = load_agent(agent2)
+    
+    game.assignPlayers(agent1_class, agent2_class)
+    return game.startGame(5)
+    
 if __name__ == "__main__":
     app.run(debug=True)

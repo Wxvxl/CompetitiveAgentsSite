@@ -2,5 +2,5 @@ class Agents:
     def __init__(self):
         pass
     
-    def getAction():
+    def getAction(self):
         pass

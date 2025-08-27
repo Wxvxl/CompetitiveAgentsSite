@@ -4,7 +4,7 @@ import psycopg2
 
 app = Flask(__name__)
 
-db_name = "testdb"
+db_name = "testing_database"
 def get_db_connection():
     conn = psycopg2.connect(
         dbname=db_name,       

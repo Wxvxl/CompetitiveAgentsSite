@@ -24,12 +24,23 @@ cur = conn.cursor()
 
 db_name = "testing_database"
 
-cur.execute("SELECT 1 FROM pg_database WHERE datname = %s", (db_name,))
+cur.execute(f"SELECT 1 FROM pg_database WHERE datname = '{db_name}'")
 
 if cur.fetchone():
-    cur.execute(cur.execute(f"DROP DATABASE {db_name}"))
+    cur.execute(f"DROP DATABASE {db_name}")
     
 cur.execute(f"CREATE DATABASE {db_name}")
+
+conn = psycopg2.connect(
+    dbname=db_name,
+    user=user_name,
+    password=password,
+    host="localhost",
+    port="5432"
+)
+
+cur = conn.cursor()
+
 cur.execute("""CREATE TABLE IF NOT EXISTS scripts (
                 groupname VARCHAR(100) PRIMARY KEY,
                 code TEXT
@@ -61,6 +72,7 @@ class RandomAgents(Agents):
         return self.choices[random.randint(0,2)]
 """)
 
+conn.commit()
 cur.close()
 conn.close()
 

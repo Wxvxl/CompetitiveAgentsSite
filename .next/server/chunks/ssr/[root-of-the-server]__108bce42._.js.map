@@ -1,0 +1,6 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 13, "column": 0}, "map": {"version":3,"sources":["file:///C:/Users/Administrator/Desktop/CompetitiveAgentsSite-main/CompetitiveAgentsSite-main/competitive-agent-site/src/pages/login.tsx"],"sourcesContent":["import Image from \"next/image\";\r\nimport Link from 'next/link'\r\nimport React , {useState} from 'react'\r\n\r\nconst Login:React.FC = () => {\r\n  return (\r\n      <h1>登录</h1>\r\n  )\r\n}\r\nexport default Login"],"names":[],"mappings":";;;;;AAIA,MAAM,QAAiB;IACrB,qBACI,qKAAC;kBAAG;;;;;;AAEV;uCACe","debugId":null}}]
+}

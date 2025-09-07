@@ -1,5 +1,5 @@
 import random
-class C4RandomAgent:
+class C4Agent:
      def move(self, symbol, board, last_move):
          '''
          symbol is the character that represents the agents moves in the board.

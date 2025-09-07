@@ -94,14 +94,14 @@ cur.execute("""
     INSERT INTO agents (group_id, name, description, file_path)
     VALUES (%s, %s, %s, %s)
     RETURNING agent_id;
-""", (group1_id, "Group 1 Agent", "Agent submitted by Group 1", "games/conn4/agents/group1/group1agent.py"))
+""", (group1_id, "Group 1 Agent", "Agent submitted by Group 1", "games/conn4/agents/students/group1/group1agent.py"))
 agent1_id = cur.fetchone()[0]
 
 cur.execute("""
     INSERT INTO agents (group_id, name, description, file_path)
     VALUES (%s, %s, %s, %s)
     RETURNING agent_id;
-""", (group2_id, "Group 2 Agent", "Agent submitted by Group 2", "games/conn4/agents/group2/group2agent.py"))
+""", (group2_id, "Group 2 Agent", "Agent submitted by Group 2", "games/conn4/agents/students/group2/group2agent.py"))
 agent2_id = cur.fetchone()[0]
 
 conn.commit()

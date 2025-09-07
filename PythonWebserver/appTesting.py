@@ -15,7 +15,22 @@ class FlaskAppTestCase(unittest.TestCase):
         data = json.loads(response.data.decode())
         print("Response JSON:", data)
 
-        self.assertIsInstance(data, list) 
+        self.assertIsInstance(data, list)
+        
+    def test_group_vs_testing(self):
+        # /play/run_tests/<groupname>/<game>
+        response = self.app.get('/play/run_tests/group1/conn4')
+
+        self.assertEqual(response.status_code, 200)
+
+        data = json.loads(response.data.decode())
+        print("Play Response JSON:", data)
+
+        # Verify structure
+        self.assertIn("group", data)
+        self.assertIn("agent", data)
+        self.assertIn("matches", data)
+        self.assertIsInstance(data["matches"], list)
 
 if __name__ == '__main__':
     unittest.main()

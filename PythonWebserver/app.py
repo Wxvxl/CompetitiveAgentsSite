@@ -47,10 +47,62 @@ def fetch_agents_by_group(groupname):
     conn.close()
     return [{"agent_id": row[0], "name": row[1], "file_path": row[2]} for row in agents]
 
+def load_class_from_file(filepath, class_name):
+    """Dynamically load a class from a file."""
+    module_name = os.path.splitext(os.path.basename(filepath))[0]
+    spec = importlib.util.spec_from_file_location(module_name, filepath)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return getattr(module, class_name)
+
+def run_tests_on_group(groupname, game_key):
+    if game_key not in games:
+        raise ValueError(f"Game '{game_key}' not found in configuration.")
+    game_info = games[game_key]
+
+    game_module = __import__(game_info["module"], fromlist=["Game"])
+    GameClass = getattr(game_module, "Game")
+
+    agents = fetch_agents_by_group(groupname)
+    if not agents:
+        return {"error": f"No agents found for group: {groupname}"}
+
+    group_agent = agents[0]  #TODO: Write code to pick the latest agent from the DB.
+    group_file = group_agent["file_path"]
+    group_class_name = game_info["agent"]
+
+    results = {"group": groupname, "agent": group_agent["name"], "matches": []}
+
+    GroupAgentClass = load_class_from_file(group_file, group_class_name)
+
+    for test_file, test_class in game_info["tests"]:
+        test_path = os.path.join("games", game_key, "agents", "test", test_file)
+        TestAgentClass = load_class_from_file(test_path, test_class)
+
+        game_instance = GameClass(GroupAgentClass(), TestAgentClass())
+        winner = game_instance.play()
+
+        results["matches"].append({
+            "test_agent": test_class,
+            "winner": winner
+        })
+
+    return results
+
 @app.route("/agents/<groupname>", methods=["GET"])
 def get_agents(groupname):
     agents = fetch_agents_by_group(groupname)
     return jsonify(agents)
+
+@app.route("/play/run_tests/<groupname>/<game>", methods=["GET"])
+def play_group_vs_tests(groupname, game):
+    try:
+        results = run_tests_on_group(groupname, game)
+        return jsonify(results)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 400
 
 if __name__ == "__main__":
     app.run(debug=True)

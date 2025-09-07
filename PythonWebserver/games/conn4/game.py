@@ -1,5 +1,5 @@
 import random
-class Connect4Game:
+class Game:
     def __init__(self, agent1, agent2):
         '''
         Creates a new game with an instances of agent1_cls and agents2_cls
@@ -19,7 +19,7 @@ class Connect4Game:
         last_move = -1 
         while not self.game_over():
             last_move = self.agents[current].move(symbols[current], self.board.copy(), last_move)
-              
+            
             if last_move < 7 and last_move >= 0 and len(self.board[last_move]) < 6:
                 self.board[last_move] = self.board[last_move] + symbols[current]
                 self.move_order[last_move] = self.move_order[last_move] + counters[current]

@@ -23,7 +23,7 @@ conn.autocommit = True
 cur = conn.cursor()
 
 db_name = "database_version_2"
-
+    
 cur.execute(f"SELECT 1 FROM pg_database WHERE datname = '{db_name}'")
 
 if cur.fetchone():

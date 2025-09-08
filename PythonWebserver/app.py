@@ -89,10 +89,55 @@ def run_tests_on_group(groupname, game_key):
 
     return results
 
+def run_group_vs_group(group1, group2, game_key):
+    if game_key not in games:
+        raise ValueError(f"Game '{game_key}' not found in configuration.")
+    game_info = games[game_key]
+
+    # Load Game class
+    game_module = __import__(game_info["module"], fromlist=["Game"])
+    GameClass = getattr(game_module, "Game")
+
+    # Fetch agents from each group
+    agents1 = fetch_agents_by_group(group1)
+    agents2 = fetch_agents_by_group(group2)
+
+    if not agents1:
+        return {"error": f"No agents found for group: {group1}"}
+    if not agents2:
+        return {"error": f"No agents found for group: {group2}"}
+
+    # TODO: refine later, just pick index 0 for now
+    agent1 = agents1[0]
+    agent2 = agents2[0]
+
+    agent_class_name = game_info["agent"]
+
+    # Load classes dynamically
+    Agent1Class = load_class_from_file(agent1["file_path"], agent_class_name)
+    Agent2Class = load_class_from_file(agent2["file_path"], agent_class_name)
+
+    # Run the match
+    game_instance = GameClass(Agent1Class(), Agent2Class())
+    winner = game_instance.play()
+
+    results = {
+        "group1": {"name": group1, "agent": agent1["name"]},
+        "group2": {"name": group2, "agent": agent2["name"]},
+        "winner": winner
+    }
+
+    return results
+
 @app.route("/agents/<groupname>", methods=["GET"])
 def get_agents(groupname):
-    agents = fetch_agents_by_group(groupname)
-    return jsonify(agents)
+    try:
+        agents = fetch_agents_by_group(groupname)
+        return jsonify(agents)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 400
 
 @app.route("/play/run_tests/<groupname>/<game>", methods=["GET"])
 def play_group_vs_tests(groupname, game):
@@ -102,6 +147,14 @@ def play_group_vs_tests(groupname, game):
     except Exception as e:
         import traceback
         traceback.print_exc()
+        return jsonify({"error": str(e)}), 400
+    
+@app.route("/play/group_vs_group/<group1>/<group2>/<game>", methods=["GET"])
+def play_group_vs_group(group1, group2, game):
+    try:
+        results = run_group_vs_group(group1, group2, game)
+        return jsonify(results)
+    except Exception as e:
         return jsonify({"error": str(e)}), 400
 
 if __name__ == "__main__":

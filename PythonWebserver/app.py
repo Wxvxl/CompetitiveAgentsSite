@@ -14,7 +14,7 @@ ALLOWED_EXT = {".py"}
 
 app = Flask(__name__)
 app.config.update(
-    #SECRET_KEY="change-me",
+    SECRET_KEY="display_demo",
     MAX_CONTENT_LENGTH=10 * 1024 * 1024,  # 10MB
 )
 

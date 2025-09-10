@@ -34,22 +34,37 @@ class RockPaperScissorGame:
             print("agent 2 win")
         else:
             print('tie')
-            
-class Agents:
-    def __init__(self):
-        pass
-    
-    def getAction():
-        pass
 
-class RandomAgents(Agents):
-    choices = ["r", "p", "s"]
-    def __init__(self):
-        super().__init__()
-    
-    def getAction(self):
-        return self.choices[random.randint(0,2)]
-    
+def load_agent_by_name(name):
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    cur.execute(f"SELECT code FROM scripts WHERE name = {name}")
+    row = cur.fetchone()
+
+    cur.close()
+    conn.close()
+
+    if not row:
+        raise ValueError(f"No script found with name '{name}'")
+
+    code = row[0]   # the script text
+
+    namespace = {}
+    exec(code, namespace)  # executes the script in this namespace
+
+    agent_class = None
+    for obj in namespace.values():
+        if isinstance(obj, type):  # check if it's a class
+            agent_class = obj
+            break
+
+    if agent_class is None:
+        raise ValueError("No class found in retrieved script")
+
+    agent_instance = agent_class()
+    return agent_instance
+
 def main():
     agent1 = RandomAgents()
     agent2 = RandomAgents()

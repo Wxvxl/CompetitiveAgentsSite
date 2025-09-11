@@ -63,7 +63,6 @@ CREATE TABLE agents (
     agent_id SERIAL PRIMARY KEY,
     group_id INT NOT NULL REFERENCES groups(group_id) ON DELETE CASCADE,
     name VARCHAR(100) NOT NULL,
-    description TEXT,
     file_path TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -91,18 +90,16 @@ group2_id = cur.fetchone()[0]
 
 # Inserting Agents
 cur.execute("""
-    INSERT INTO agents (group_id, name, description, file_path)
-    VALUES (%s, %s, %s, %s)
+    INSERT INTO agents (group_id, name, file_path)
+    VALUES (%s, %s, %s)
     RETURNING agent_id;
-""", (group1_id, "Group 1 Agent", "Agent submitted by Group 1", "games/conn4/agents/students/group1/group1agent.py"))
-agent1_id = cur.fetchone()[0]
+""", (group1_id, "Group 1 Agent", "games/conn4/agents/students/group1/group1agent.py"))
 
 cur.execute("""
-    INSERT INTO agents (group_id, name, description, file_path)
-    VALUES (%s, %s, %s, %s)
+    INSERT INTO agents (group_id, name, file_path)
+    VALUES (%s, %s, %s)
     RETURNING agent_id;
-""", (group2_id, "Group 2 Agent", "Agent submitted by Group 2", "games/conn4/agents/students/group2/group2agent.py"))
-agent2_id = cur.fetchone()[0]
+""", (group2_id, "Group 2 Agent", "games/conn4/agents/students/group2/group2agent.py"))
 
 conn.commit()
 

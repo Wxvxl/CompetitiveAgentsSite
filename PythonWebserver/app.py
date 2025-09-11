@@ -13,14 +13,23 @@ DB_HOST = "localhost"
 DB_PORT = "5432"
 
 # TODO: Find better solution for storing the list of games and their test.
+# Maybe a JSON file or just store it in the DB.
 games = {
     "conn4": {
         "module": "games.conn4.game",
         "tests": [ # Tuple data structure that decides the test items.
-            ("minimax.py", "C4MinimaxAgent"),
+            ("minimax.py", "C4MinimaxAgent"), # First entry is the test agent file, second is the class name.
             ("randomagent.py", "C4RandomAgent")
         ],
-        "agent": "C4Agent"
+        "agent": "C4Agent" # The agent name for every student.
+    },
+    "TTT": {
+       "module" : "games.tictactoe.game",
+       "tests": [
+           ("firstavail.py", "FirstAvailableAgent"),
+           ("random.py", "RandomAgent") 
+       ],
+       "agent" : "TTTAgent"
     }
 }
 

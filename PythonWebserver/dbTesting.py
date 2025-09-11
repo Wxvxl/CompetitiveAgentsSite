@@ -63,6 +63,7 @@ CREATE TABLE agents (
     agent_id SERIAL PRIMARY KEY,
     group_id INT NOT NULL REFERENCES groups(group_id) ON DELETE CASCADE,
     name VARCHAR(100) NOT NULL,
+    game varchar(100) NOT NULL,
     file_path TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -90,16 +91,16 @@ group2_id = cur.fetchone()[0]
 
 # Inserting Agents
 cur.execute("""
-    INSERT INTO agents (group_id, name, file_path)
-    VALUES (%s, %s, %s)
+    INSERT INTO agents (group_id, name, game, file_path)
+    VALUES (%s, %s, %s, %s)
     RETURNING agent_id;
-""", (group1_id, "Group 1 Agent", "games/conn4/agents/students/group1/group1agent.py"))
+""", (group1_id, "Group 1 Agent", "conn4","games/conn4/agents/students/group1/group1agent.py"))
 
 cur.execute("""
-    INSERT INTO agents (group_id, name, file_path)
-    VALUES (%s, %s, %s)
+    INSERT INTO agents (group_id, name, game, file_path)
+    VALUES (%s, %s, %s, %s)
     RETURNING agent_id;
-""", (group2_id, "Group 2 Agent", "games/conn4/agents/students/group2/group2agent.py"))
+""", (group2_id, "Group 2 Agent", "conn4","games/conn4/agents/students/group2/group2agent.py"))
 
 conn.commit()
 
@@ -113,11 +114,11 @@ for row in cur.fetchall():
 # Fetch agents
 print("\n=== Agents ===")
 cur.execute("""
-    SELECT a.agent_id, a.name AS agent_name, a.file_path, g.groupname
+    SELECT a.agent_id, a.name AS agent_name, a.file_path, g.groupname, a.game
     FROM agents a
     JOIN groups g ON a.group_id = g.group_id;
 """)
 for row in cur.fetchall():
-    print(f"agent_id={row[0]}, agent_name={row[1]}, file_path={row[2]}, groupname={row[3]}")
+    print(f"agent_id={row[0]}, agent_name={row[1]}, file_path={row[2]}, groupname={row[3]}, game={row[4]}")
 
 print("Success")

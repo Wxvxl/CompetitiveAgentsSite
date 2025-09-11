@@ -32,9 +32,9 @@ class Game:
         while True:
             if self.current_player == "X":
                 # Pass a copy for the move command so agents dont mutate the original board. 
-                move = self.agent1.move(self.board[:], "X")
+                move = self.agent1.move(self.board[:])
             else:
-                move = self.agent2.move(self.board[:], "O")
+                move = self.agent2.move(self.board[:])
 
             if move not in range(9) or self.board[move] != " ":
                 # Illegal move means opponent victory.

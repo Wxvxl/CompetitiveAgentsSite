@@ -124,14 +124,23 @@ DB_HOST = "localhost"
 DB_PORT = "5432"
 
 # TODO: Find better solution for storing the list of games and their test.
+# Maybe a JSON file or just store it in the DB.
 games = {
     "conn4": {
         "module": "games.conn4.game",
         "tests": [ # Tuple data structure that decides the test items.
-            ("minimax.py", "C4MinimaxAgent"),
+            ("minimax.py", "C4MinimaxAgent"), # First entry is the test agent file, second is the class name.
             ("randomagent.py", "C4RandomAgent")
         ],
-        "agent": "C4Agent"
+        "agent": "C4Agent" # The agent name for every student.
+    },
+    "TTT": {
+       "module" : "games.tictactoe.game",
+       "tests": [
+           ("firstavail.py", "FirstAvailableAgent"),
+           ("random.py", "RandomAgent") 
+       ],
+       "agent" : "TTTAgent"
     }
 }
 
@@ -144,15 +153,17 @@ def get_db_connection():
         port=DB_PORT
     )
     
-def fetch_agents_by_group(groupname):
+# Fetch an agent from a group for a specific game
+def fetch_agents(groupname, game):
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute("""
         SELECT a.agent_id, a.name, a.file_path
         FROM agents a
         JOIN groups g ON a.group_id = g.group_id
-        WHERE g.groupname = %s;
-    """, (groupname,))
+        WHERE g.groupname = %s
+          AND a.game = %s ;
+    """, (groupname, game))
     agents = cur.fetchall()
     cur.close()
     conn.close()
@@ -166,15 +177,15 @@ def load_class_from_file(filepath, class_name):
     spec.loader.exec_module(module)
     return getattr(module, class_name)
 
-def run_tests_on_group(groupname, game_key):
-    if game_key not in games:
-        raise ValueError(f"Game '{game_key}' not found in configuration.")
-    game_info = games[game_key]
+def run_tests_on_group(groupname, game):
+    if game not in games:
+        raise ValueError(f"Game '{game}' not found in configuration.")
+    game_info = games[game]
 
     game_module = __import__(game_info["module"], fromlist=["Game"])
     GameClass = getattr(game_module, "Game")
 
-    agents = fetch_agents_by_group(groupname)
+    agents = fetch_agents(groupname, game)
     if not agents:
         return {"error": f"No agents found for group: {groupname}"}
 
@@ -187,7 +198,7 @@ def run_tests_on_group(groupname, game_key):
     GroupAgentClass = load_class_from_file(group_file, group_class_name)
 
     for test_file, test_class in game_info["tests"]:
-        test_path = os.path.join("games", game_key, "agents", "test", test_file)
+        test_path = os.path.join("games", game, "agents", "test", test_file)
         TestAgentClass = load_class_from_file(test_path, test_class)
 
         game_instance = GameClass(GroupAgentClass(), TestAgentClass())
@@ -200,18 +211,18 @@ def run_tests_on_group(groupname, game_key):
 
     return results
 
-def run_group_vs_group(group1, group2, game_key):
-    if game_key not in games:
-        raise ValueError(f"Game '{game_key}' not found in configuration.")
-    game_info = games[game_key]
+def run_group_vs_group(group1, group2, game):
+    if game not in games:
+        raise ValueError(f"Game '{game}' not found in configuration.")
+    game_info = games[game]
 
     # Load Game class
     game_module = __import__(game_info["module"], fromlist=["Game"])
     GameClass = getattr(game_module, "Game")
 
     # Fetch agents from each group
-    agents1 = fetch_agents_by_group(group1)
-    agents2 = fetch_agents_by_group(group2)
+    agents1 = fetch_agents(group1, game)
+    agents2 = fetch_agents(group2, game)
 
     if not agents1:
         return {"error": f"No agents found for group: {group1}"}

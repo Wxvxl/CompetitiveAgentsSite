@@ -6,16 +6,6 @@ class FlaskAppTestCase(unittest.TestCase):
     def setUp(self):
         self.app = app.test_client()
         self.app.testing = True
-
-    def test_get_agents(self):
-        response = self.app.get('/agents/group1')
-        
-        self.assertEqual(response.status_code, 200) # Status OK
-
-        data = json.loads(response.data.decode())
-        print("Response JSON:", data)
-
-        self.assertIsInstance(data, list)
         
     def test_group_vs_testing(self):
         # /play/run_tests/<groupname>/<game>

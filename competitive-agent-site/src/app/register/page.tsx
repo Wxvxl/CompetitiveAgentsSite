@@ -1,5 +1,7 @@
 "use client";
 import { useState } from "react";
+import Input from "../../components/ui/Input";
+import Button from "../../components/ui/Button";
 
 export default function RegisterPage() {
   const [form, setForm] = useState({
@@ -26,39 +28,48 @@ export default function RegisterPage() {
   }
 
   return (
-    <form onSubmit={handleSubmit}>
+    <form onSubmit={handleSubmit} style={{ maxWidth: 480 }}>
       <h2>Register</h2>
-      <input
+      <Input
         type="email"
         placeholder="Email"
         value={form.email}
         onChange={(e) => setForm({ ...form, email: e.target.value })}
         required
       />
-      <input
+      <Input
         type="text"
         placeholder="Name"
         value={form.name}
         onChange={(e) => setForm({ ...form, name: e.target.value })}
       />
-      <input
+      <Input
         type="password"
         placeholder="Password"
         value={form.password}
         onChange={(e) => setForm({ ...form, password: e.target.value })}
         required
       />
-      <select
-        value={form.role}
-        onChange={(e) => setForm({ ...form, role: e.target.value })}
-        required
-      >
-        <option value="student">Student</option>
-        <option value="admin">Admin</option>
-      </select>
-      <button type="submit">Register</button>
-      {error && <div style={{ color: "red" }}>{error}</div>}
-      {success && <div style={{ color: "green" }}>{success}</div>}
+      <div style={{ marginBottom: 12 }}>
+        <select
+          value={form.role}
+          onChange={(e) => setForm({ ...form, role: e.target.value })}
+          required
+          style={{
+            width: "100%",
+            padding: "8px 10px",
+            borderRadius: 6,
+            border: "1px solid #d1d5db",
+            outline: "none",
+          }}
+        >
+          <option value="student">Student</option>
+          <option value="admin">Admin</option>
+        </select>
+      </div>
+      <Button type="submit">Register</Button>
+      {error && <div style={{ color: "red", marginTop: 8 }}>{error}</div>}
+      {success && <div style={{ color: "green", marginTop: 8 }}>{success}</div>}
     </form>
   );
 }

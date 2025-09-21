@@ -140,27 +140,69 @@ def run_group_vs_group(group1, group2, game):
 
     return results
 
-#TODO: FIX THIS LATER.
-# @app.route("/agents/upload/<game>", methods=["POST"])
-# def upload_agent(game):
-#     # Error Checking
-#     if "user_id" not in session:
-#         return {"error": "Not authenticated"}, 401
-#     if "file" not in request.files:
-#         return {"error": "No file part"}, 400
-#     file = request.files["file"]
-#     if file.filename == "":
-#         return {"error" : "No selected file"}, 400
-#     if not file.filename.endswith(".py"):
-#         return {"error": "Only .py files allowed"}, 400
-#     path = os.path.join(os.getcwd(), "games", game, "agents", "students", session["user_id"])
-#     file.save(path)
-#     db = SessionLocal()
-#     agent = Agent(filename=file.filename, user_id=session["user_id"])
-#     db.add(agent)
-#     db.commit()
-#     db.close()
+@app.route("/agents/upload/<game>", methods=["POST"])
+def upload_agent(game):
+    # Error Checking
+    if "user_id" not in session:
+        return {"error": "Not authenticated"}, 401
+    if "group_id" not in session:
+        return {"error": "Not in a group"}, 401
+    if "file" not in request.files:
+        return {"error": "No file part"}, 400
+
+    file = request.files["file"]
+
+    if file.filename == "":
+        return {"error": "No selected file"}, 400
+    if not file.filename.endswith(".py"):
+        return {"error": "Only .py files allowed"}, 400
     
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        cur.execute("SELECT groupname FROM groups WHERE group_id = %s;", (session["group_id"],))
+        group_name = cur.fetchone()[0]
+        # File Upload
+        path = os.path.join(os.getcwd(), "games", game, "agents", "students", group_name)
+        os.makedirs(path, exist_ok=True)
+
+        file.save(os.path.join(path, file.filename))
+        
+        cur.execute(
+            """
+            INSERT INTO agents (group_id, name, game, filename)
+            VALUES (%s, %s, %s, %s)
+            RETURNING agent_id;
+            """,
+            (session["group_id"], file.filename[:-3], game, file.filename)
+        )
+                
+        agent_id = cur.fetchone()[0]
+        conn.commit()
+        cur.close()
+        
+        
+        return jsonify({
+            "message": "File uploaded successfully",
+            "agent": {
+                "id": agent_id,
+                "grou_id" : session["group_id"],
+                "filename": file.filename,
+                "game": game
+            }
+        })
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        return {"error": str(e)}, 500
+
+    finally:
+        if conn:
+            conn.close()
+    
+
 @app.route("/agents/<groupname>/<game>", methods=["GET"])
 def get_agents(groupname, game):
     try:
@@ -278,10 +320,11 @@ def login():
             "SELECT user_id, username, email, hashed_password, role, group_id FROM users WHERE email = %s",
             (email,)
         )
+        
         row = cur.fetchone()
         cur.close()
 
-        if not row:
+        if not row: 
             return jsonify({"error": "Invalid credentials"}), 401
 
         user_id, username, email_db, hashed_pw, role, group_id = row

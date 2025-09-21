@@ -1,4 +1,10 @@
 import psycopg2
+import os
+
+DB_URL = os.getenv("DATABASE_URL", "postgresql://postgres:admin@localhost:5432/test") #Use your own link here
+
+def get_db_connection(URL):
+    return psycopg2.connect(URL)
 
 # Replace this with your postgres password during setup.
 user_name = "postgres"
@@ -15,7 +21,7 @@ conn = psycopg2.connect(
 conn.autocommit = True
 cur = conn.cursor()
 
-db_name = "database_version_2"
+db_name = "test" # Replace this with your testing name!
     
 cur.execute(f"SELECT 1 FROM pg_database WHERE datname = '{db_name}'")
 
@@ -24,13 +30,7 @@ if cur.fetchone():
     
 cur.execute(f"CREATE DATABASE {db_name}")
 
-conn = psycopg2.connect(
-    dbname=db_name,
-    user=user_name,
-    password=password, 
-    host="localhost",
-    port="5432"
-)
+conn = psycopg2.connect(DB_URL)
 
 cur = conn.cursor()
 

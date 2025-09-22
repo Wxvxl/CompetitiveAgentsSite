@@ -11,15 +11,6 @@ CORS(app, origins=["http://localhost:3000"],supports_credentials=True)
 app.secret_key = os.getenv("SECRET_KEY", "your-secret-key")  # Use a strong secret in production
 DB_URL = os.getenv("DATABASE_URL", "postgresql://postgres:admin@localhost:5432/test") #Use your own link here
 
-# TODO: Store in an env file. This is horribly unsafe.
-DB_NAME = "database_version_2"
-DB_USER = "postgres"
-DB_PASS = "admin"
-DB_HOST = "localhost"
-DB_PORT = "5432"
-
-# TODO: Find better solution for storing the list of games and their test.
-# Maybe a JSON file or just store it in the DB.
 games = {
     "conn4": {
         "module": "games.conn4.game",

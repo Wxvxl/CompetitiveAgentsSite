@@ -1,6 +1,8 @@
 import psycopg2
 import os
 
+#TODO: Refactor this script to be a script to create the database and set it up. Move all testing to appTesting.py
+
 DB_URL = os.getenv("DATABASE_URL", "postgresql://postgres:admin@localhost:5432/test") #Use your own link here
 
 def get_db_connection(URL):

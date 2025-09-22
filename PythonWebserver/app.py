@@ -178,7 +178,7 @@ def upload_agent(game):
             "message": "File uploaded successfully",
             "agent": {
                 "id": agent_id,
-                "grou_id" : session["group_id"],
+                "group_id" : session["group_id"],
                 "filename": file.filename,
                 "game": game
             }

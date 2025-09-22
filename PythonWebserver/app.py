@@ -1,130 +1,16 @@
 from flask import Flask, request, jsonify, session
 from flask_cors import CORS
-from models import SessionLocal, User, Agent
-from sqlalchemy.exc import IntegrityError
 import importlib.util
 import psycopg2
+from psycopg2 import errors
 import bcrypt
 import os
 
 app = Flask(__name__)
 CORS(app, origins=["http://localhost:3000"],supports_credentials=True)
 app.secret_key = os.getenv("SECRET_KEY", "your-secret-key")  # Use a strong secret in production
+DB_URL = os.getenv("DATABASE_URL", "postgresql://postgres:admin@localhost:5432/test") #Use your own link here
 
-
-UPLOAD_FOLDER = os.path.join(os.getcwd(), "uploaded_agents")
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
-
-@app.route("/api/upload_agent", methods=["POST"])
-def upload_agent():
-    if "user_id" not in session:
-        return {"error": "Not authenticated"}, 401
-    if "file" not in request.files:
-        return {"error": "No file part"}, 400
-    file = request.files["file"]
-    if file.filename == "":
-        return {"error": "No selected file"}, 400
-    if not file.filename.endswith(".py"):
-        return {"error": "Only .py files allowed"}, 400
-    save_path = os.path.join(app.config["UPLOAD_FOLDER"], file.filename)
-    file.save(save_path)
-    db = SessionLocal()
-    agent = Agent(filename=file.filename, user_id=session["user_id"])
-    db.add(agent)
-    db.commit()
-    db.close()
-    return {"message": "Agent uploaded successfully", "filename": file.filename}
-
-@app.route("/api/register", methods=["POST"])
-def register():
-    data = request.json
-    email = data.get("email")
-    password = data.get("password")
-    name = data.get("name")
-    role = data.get("role", "student")
-    if not email or not password:
-        return jsonify({"error": "Missing fields"}), 400
-    hashed_pw = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-    db = SessionLocal()
-    user = User(email=email, password=hashed_pw, name=name, role=role)
-    db.add(user)
-    try:
-        db.commit()
-        return jsonify({"user": {"id": user.id, "email": user.email, "name": user.name, "role": user.role}})
-    except IntegrityError:
-        db.rollback()
-        return jsonify({"error": "Email already exists"}), 400
-    finally:
-        db.close()
-        
-@app.route("/api/logout", methods=["POST"])
-def logout():
-    session.clear()
-    return jsonify({"message": "Logged out"})
-
-@app.route("/api/me", methods=["GET"])
-def me():
-    if "user_id" not in session:
-        return jsonify({"error": "Not authenticated"}), 401
-    return jsonify({
-        "user": {
-            "id": session["user_id"],
-            "email": session["email"],
-            "isAdmin": session["isAdmin"]
-        }
-    })
-
-@app.route("/api/login", methods=["POST"])
-def login():
-    data = request.json
-    email = data.get("email")
-    password = data.get("password")
-    db = SessionLocal()
-    user = db.query(User).filter_by(email=email).first()
-    db.close()
-    if not user or not bcrypt.checkpw(password.encode(), user.password.encode()):
-        return jsonify({"error": "Invalid credentials"}), 401
-    session["user_id"] = user.id
-    session["email"] = user.email
-    session["isAdmin"] = user.isAdmin
-    session["role"] = user.role  
-    return jsonify({
-        "user": {
-            "id": user.id,
-            "email": user.email,
-            "name": user.name,
-            "isAdmin": user.isAdmin,
-            "role": user.role     
-        }
-    })
-
-
-@app.route("/api/agents", methods=["GET"])
-def list_agents():
-    db = SessionLocal()
-    agents = db.query(Agent).join(User).all()
-    result = [
-        {
-            "id": agent.id,
-            "filename": agent.filename,
-            "uploader": agent.user.email,
-            "upload_time": agent.upload_time.strftime("%Y-%m-%d %H:%M:%S"),
-        }
-        for agent in agents
-    ]
-    db.close()
-    return jsonify(result)
-
-# TODO: Store in an env file. This is horribly unsafe.
-DB_NAME = "database_version_2"
-DB_USER = "postgres"
-DB_PASS = "admin"
-DB_HOST = "localhost"
-DB_PORT = "5432"
-
-# TODO: Find better solution for storing the list of games and their test.
-# Maybe a JSON file or just store it in the DB.
 games = {
     "conn4": {
         "module": "games.conn4.game",
@@ -145,13 +31,7 @@ games = {
 }
 
 def get_db_connection():
-    return psycopg2.connect(
-        dbname=DB_NAME,
-        user=DB_USER,
-        password=DB_PASS,
-        host=DB_HOST,
-        port=DB_PORT
-    )
+    return psycopg2.connect(DB_URL)
     
 # Fetch an agent from a group for a specific game
 def fetch_agents(groupname, game):
@@ -251,10 +131,73 @@ def run_group_vs_group(group1, group2, game):
 
     return results
 
-@app.route("/agents/<groupname>", methods=["GET"])
-def get_agents(groupname):
+@app.route("/agents/upload/<game>", methods=["POST"])
+def upload_agent(game):
+    # Error Checking
+    if "user_id" not in session:
+        return {"error": "Not authenticated"}, 401
+    if "group_id" not in session:
+        return {"error": "Not in a group"}, 401
+    if "file" not in request.files:
+        return {"error": "No file part"}, 400
+
+    file = request.files["file"]
+
+    if file.filename == "":
+        return {"error": "No selected file"}, 400
+    if not file.filename.endswith(".py"):
+        return {"error": "Only .py files allowed"}, 400
+    
     try:
-        agents = fetch_agents_by_group(groupname)
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        cur.execute("SELECT groupname FROM groups WHERE group_id = %s;", (session["group_id"],))
+        group_name = cur.fetchone()[0]
+        # File Upload
+        path = os.path.join(os.getcwd(), "games", game, "agents", "students", group_name)
+        os.makedirs(path, exist_ok=True)
+
+        file.save(os.path.join(path, file.filename))
+        
+        cur.execute(
+            """
+            INSERT INTO agents (group_id, name, game, filename)
+            VALUES (%s, %s, %s, %s)
+            RETURNING agent_id;
+            """,
+            (session["group_id"], file.filename[:-3], game, file.filename)
+        )
+                
+        agent_id = cur.fetchone()[0]
+        conn.commit()
+        cur.close()
+        
+        
+        return jsonify({
+            "message": "File uploaded successfully",
+            "agent": {
+                "id": agent_id,
+                "group_id" : session["group_id"],
+                "filename": file.filename,
+                "game": game
+            }
+        })
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        return {"error": str(e)}, 500
+
+    finally:
+        if conn:
+            conn.close()
+    
+
+@app.route("/agents/<groupname>/<game>", methods=["GET"])
+def get_agents(groupname, game):
+    try:
+        agents = fetch_agents(groupname, game)
         return jsonify(agents)
     except Exception as e:
         import traceback
@@ -279,5 +222,129 @@ def play_group_vs_group(group1, group2, game):
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
+@app.route("/api/register", methods=["POST"])
+def register():
+    data = request.json
+    username = data.get("name")
+    email = data.get("email")
+    password = data.get("password")
+    role = data.get("role", "student")
+    
+    if not username or not email or not password:
+        return jsonify({"error": "Missing fields"}), 400
+    
+    hashed_pw = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+    conn = None
+    
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        cur.execute(
+            """
+            INSERT INTO users (username, email, hashed_password, role)
+            VALUES (%s, %s, %s, %s)
+            RETURNING user_id;
+            """,
+            (username, email, hashed_pw, role)
+        )
+        
+        user_id = cur.fetchone()[0]
+        conn.commit()
+        cur.close()
+
+        return jsonify({
+            "user": {
+                "id": user_id,
+                "username": username,
+                "email": email,
+                "role": role,
+            }
+        })
+        
+    except errors.UniqueViolation:
+        if conn:
+            conn.rollback()
+        return jsonify({"error": "Username or Email already exists"}), 400
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    
+    finally:
+        if conn:
+            conn.close()
+        
+@app.route("/api/logout", methods=["POST"])
+def logout():
+    session.clear()
+    return jsonify({"message": "Logged out"})
+
+@app.route("/api/me", methods=["GET"])
+def me():
+    if "user_id" not in session:
+        return jsonify({"error": "Not authenticated"}), 401
+    return jsonify({
+        "user": {
+            "id": session["user_id"],
+            "email": session["email"],
+        }
+    })
+
+@app.route("/api/login", methods=["POST"])
+def login():
+    data = request.json
+    email = data.get("email")
+    password = data.get("password")
+
+    if not email or not password:
+        return jsonify({"error": "Missing fields"}), 400
+
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        # Fetch user by email
+        cur.execute(
+            "SELECT user_id, username, email, hashed_password, role, group_id FROM users WHERE email = %s",
+            (email,)
+        )
+        
+        row = cur.fetchone()
+        cur.close()
+
+        if not row: 
+            return jsonify({"error": "Invalid credentials"}), 401
+
+        user_id, username, email_db, hashed_pw, role, group_id = row
+
+        # Check password
+        if not bcrypt.checkpw(password.encode(), hashed_pw.encode()):
+            return jsonify({"error": "Invalid credentials"}), 401
+
+        # Store info in session
+        session["user_id"] = user_id
+        session["email"] = email_db
+        session["role"] = role
+        session["group_id"] = group_id if group_id is not None else None
+
+        return jsonify({
+            "user": {
+                "id": user_id,
+                "username": username,
+                "email": email_db,
+                "role": role,
+                "group_id": group_id if group_id is not None else None
+            }
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn:
+            conn.close()
+    
 if __name__ == "__main__":
     app.run(debug=True)

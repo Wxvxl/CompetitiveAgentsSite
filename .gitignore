@@ -19,6 +19,9 @@ node_modules/
 # next.js
 /.next/
 /out/
+competitive-agent-site/.next/
+competitive-agent-site/node_modules/
+competitive-agent-site/.env
 
 # production
 /build
@@ -69,3 +72,8 @@ venv/
 .venv/
 ENV/
 env/
+/generated/prisma
+PythonWebserver/uploaded_agents/
+
+# Alembic SQLite history (if any)
+PythonWebserver/alembic/versions/__pycache__/

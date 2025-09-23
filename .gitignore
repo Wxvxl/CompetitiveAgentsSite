@@ -13,7 +13,8 @@ node_modules/
 
 # testing
 /coverage
-/the_diplomacy/results
+/the_diplomacy
+/Flask_diplomacy/the_diplomacy/results
 
 # next.js
 /.next/

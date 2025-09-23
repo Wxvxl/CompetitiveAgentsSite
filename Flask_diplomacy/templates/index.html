@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Diplomacy Runner</title>
+    <style>
+      body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 2rem; background: #f5f7fa; }
+      h1 { margin-bottom: 1.5rem; }
+      section { background: #fff; border-radius: 8px; padding: 1.5rem; box-shadow: 0 2px 6px rgba(15, 37, 63, 0.08); margin-bottom: 1.5rem; }
+      ul { list-style: disc; padding-left: 1.5rem; }
+      label { display: block; margin-bottom: 0.75rem; }
+      input, select { padding: 0.4rem 0.6rem; border-radius: 4px; border: 1px solid #ccd3df; min-width: 140px; }
+      button { margin-top: 1rem; padding: 0.5rem 1.2rem; border: none; border-radius: 4px; background: #0b63f6; color: #fff; cursor: pointer; }
+      button:disabled { background: #9ba7c1; cursor: not-allowed; }
+      pre { background: #1f2933; color: #f5f7fa; padding: 1rem; border-radius: 6px; overflow-x: auto; }
+      .status { margin-top: 1rem; }
+      .analysis-output { background: #fff; border: 1px solid #e2e8f0; border-radius: 6px; padding: 1rem; font-family: inherit; color: #1f2937; overflow-x: auto; }
+      .analysis-output table { width: 100%; border-collapse: collapse; margin-top: 0.75rem; }
+      .analysis-output th, .analysis-output td { padding: 0.5rem 0.6rem; text-align: left; border-bottom: 1px solid #d9e2ec; }
+      .analysis-output th { background: #f0f4f8; font-weight: 600; }
+      .analysis-output .issues { margin-top: 1rem; padding-left: 1.25rem; }
+    </style>
+  </head>
+  <body>
+    <h1>Diplomacy Batch Runner</h1>
+
+    {% if scenario_error or agent_error %}
+    <section style="border-left: 4px solid #d9534f;">
+      <h2 style="color:#d9534f;">Configuration Issues</h2>
+      <ul>
+        {% if scenario_error %}<li>Scenario discovery: {{ scenario_error }}</li>{% endif %}
+        {% if agent_error %}<li>Agent discovery: {{ agent_error }}</li>{% endif %}
+      </ul>
+    </section>
+    {% endif %}
+
+    <section>
+      <h2>Detected Agents</h2>
+      <ul>
+        {% for agent in agents %}
+          <li>{{ agent }}</li>
+        {% else %}
+          <li>No agent_*.py files found.</li>
+        {% endfor %}
+      </ul>
+    </section>
+
+    <section>
+      <h2>Run Scenario</h2>
+      <form id="run-form">
+        <label>
+          Scenario
+          <select name="scenario" {% if not scenarios %}disabled{% endif %}>
+            {% for scenario in scenarios %}
+              <option value="{{ scenario }}" {% if scenario == scenario_default %}selected{% endif %}>{{ scenario }}</option>
+            {% endfor %}
+          </select>
+        </label>
+
+        <label>
+          Repeat Nums (optional)
+          <input name="repeat_nums" type="number" min="1" step="1" placeholder="press enter to skip">
+        </label>
+
+        <label>
+          <input type="checkbox" name="save_outputs"> Save JSON/CSV to disk
+        </label>
+
+        <button type="submit" {% if not scenarios %}disabled{% endif %}>Run Agents</button>
+        <div class="status" id="status"></div>
+      </form>
+
+      <h3>Result</h3>
+      <pre id="result">Submit to view output...</pre>
+    </section>
+
+    <section>
+      <h2>Analyze Saved Results</h2>
+      <form id="analysis-form">
+        <label>
+          Results File
+          <select id="results-file" name="filename" disabled>
+            <option value="">Loading...</option>
+          </select>
+        </label>
+
+        <label>
+          Top N (optional)
+          <input name="top" id="analysis-top" type="number" min="1" step="1" placeholder="10">
+        </label>
+
+        <button type="submit" disabled>Analyze</button>
+        <div class="status" id="analysis-status"></div>
+      </form>
+
+      <h3>Analysis</h3>
+      <div id="analysis-output" class="analysis-output">Select a results file to see summary...</div>
+    </section>
+
+    <script>
+      const form = document.getElementById('run-form');
+      const resultEl = document.getElementById('result');
+      const statusEl = document.getElementById('status');
+      const resultsSelect = document.getElementById('results-file');
+      const analysisForm = document.getElementById('analysis-form');
+      const analysisOutput = document.getElementById('analysis-output');
+      const analysisStatus = document.getElementById('analysis-status');
+
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        statusEl.textContent = 'Running...';
+        resultEl.textContent = '';
+
+        const formData = new FormData(form);
+        const payload = {
+          scenario: formData.get('scenario'),
+          repeat_nums: formData.get('repeat_nums') || null,
+          save_outputs: formData.get('save_outputs') === 'on'
+        };
+
+        try {
+          const response = await fetch('/agents/run', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+
+          const data = await response.json();
+          statusEl.textContent = response.ok ? 'Completed' : 'Request failed';
+          resultEl.textContent = JSON.stringify(data, null, 2);
+        } catch (error) {
+          statusEl.textContent = 'Error communicating with server';
+          resultEl.textContent = String(error);
+        }
+      });
+
+      async function refreshResultFiles() {
+        try {
+          const response = await fetch('/results/list');
+          const data = await response.json();
+          if (!response.ok || !data.ok) {
+            throw new Error(data.error || 'Failed to load results list');
+          }
+          resultsSelect.innerHTML = '';
+          if (!data.files.length) {
+            const option = document.createElement('option');
+            option.value = '';
+            option.textContent = 'No results found';
+            resultsSelect.appendChild(option);
+            resultsSelect.disabled = true;
+            analysisForm.querySelector('button').disabled = true;
+            return;
+          }
+          for (const file of data.files) {
+            const option = document.createElement('option');
+            option.value = file;
+            option.textContent = file;
+            resultsSelect.appendChild(option);
+          }
+          resultsSelect.disabled = false;
+          analysisForm.querySelector('button').disabled = false;
+        } catch (error) {
+          resultsSelect.innerHTML = '';
+          const option = document.createElement('option');
+          option.value = '';
+          option.textContent = 'Error loading files';
+          resultsSelect.appendChild(option);
+          resultsSelect.disabled = true;
+          analysisForm.querySelector('button').disabled = true;
+          analysisStatus.textContent = String(error);
+        }
+      }
+
+      analysisForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+
+        const filename = resultsSelect.value;
+        const top = document.getElementById('analysis-top').value;
+
+        if (!filename) {
+          analysisStatus.textContent = 'Please select a results file.';
+          return;
+        }
+
+        analysisStatus.textContent = 'Analyzing...';
+        analysisOutput.textContent = '';
+
+        try {
+          const response = await fetch('/results/analyze', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filename, top: top || null })
+          });
+          const data = await response.json();
+          if (!response.ok || !data.ok) {
+            throw new Error(data.error || 'Analysis failed');
+          }
+          analysisStatus.textContent = 'Completed';
+          renderAnalysis(data);
+        } catch (error) {
+          analysisStatus.textContent = 'Error';
+          analysisOutput.textContent = String(error);
+        }
+      });
+
+      refreshResultFiles();
+
+      function renderAnalysis(data) {
+        analysisOutput.innerHTML = '';
+
+        const header = document.createElement('div');
+        header.innerHTML = `
+          <strong>File:</strong> ${data.file}<br>
+          <strong>Entries:</strong> ${data.success_count} successful / ${data.issue_count} issues
+        `;
+        analysisOutput.appendChild(header);
+
+        if (data.average) {
+          const avg = document.createElement('p');
+          avg.textContent = `Average — Wins ${data.average.wins.toFixed(1)}%, ` +
+            `SCs ${data.average.sc_mean.toFixed(2)}±${data.average.sc_std.toFixed(2)}, ` +
+            `Survive ${data.average.survive.toFixed(1)}%, Defeat ${data.average.defeat.toFixed(1)}%`;
+          analysisOutput.appendChild(avg);
+        }
+
+        if (data.top && data.top.length) {
+          const table = document.createElement('table');
+          table.innerHTML = `
+            <thead>
+              <tr>
+                <th>Rank</th>
+                <th>Student</th>
+                <th>Wins %</th>
+                <th>SCs (±Std)</th>
+                <th>Survive %</th>
+                <th>Defeat %</th>
+                <th>File</th>
+              </tr>
+            </thead>
+          `;
+          const tbody = document.createElement('tbody');
+          data.top.forEach((row, index) => {
+            const tr = document.createElement('tr');
+            const scText = `${row.sc_mean.toFixed(2)} ± ${row.sc_std.toFixed(2)}`;
+            tr.innerHTML = `
+              <td>${index + 1}</td>
+              <td>${row.student}</td>
+              <td>${row.wins.toFixed(1)}</td>
+              <td>${scText}</td>
+              <td>${row.survive.toFixed(1)}</td>
+              <td>${row.defeat.toFixed(1)}</td>
+              <td>${row.filename}</td>
+            `;
+            tbody.appendChild(tr);
+          });
+          table.appendChild(tbody);
+          analysisOutput.appendChild(table);
+        }
+
+        if (data.issues && data.issues.length) {
+          const divider = document.createElement('hr');
+          analysisOutput.appendChild(divider);
+          const heading = document.createElement('strong');
+          heading.textContent = 'Issues';
+          analysisOutput.appendChild(heading);
+          const list = document.createElement('ul');
+          list.className = 'issues';
+          data.issues.forEach((issue) => {
+            const item = document.createElement('li');
+            item.textContent = `${issue.student}: ${issue.message}`;
+            list.appendChild(item);
+          });
+          analysisOutput.appendChild(list);
+        }
+
+        if (!analysisOutput.hasChildNodes()) {
+          analysisOutput.textContent = 'No data available.';
+        }
+      }
+    </script>
+  </body>
+</html>

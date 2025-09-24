@@ -5,7 +5,7 @@ export default function RegisterPage() {
   const [form, setForm] = useState({
     email: "",
     password: "",
-    name: "",
+    username: "",
     role: "student",
   });
   const [error, setError] = useState("");
@@ -15,14 +15,29 @@ export default function RegisterPage() {
     e.preventDefault();
     setError("");
     setSuccess("");
-    const res = await fetch("http://localhost:5000/api/register", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
-    });
-    const data = await res.json();
-    if (res.ok) setSuccess("Registration successful!");
-    else setError(data.error || "Registration failed");
+    console.log("Sending form data:", form);
+
+    try {
+      const res = await fetch("http://localhost:5000/api/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+        credentials: "include",
+      });
+      const data = await res.json();
+      console.log("Server response:", data);
+
+      if (res.ok) {
+        setSuccess("Registration successful!");
+        window.location.href = "/login";
+      } else {
+        setError(data.error || "Registration failed");
+        console.error("Registration failed:", data.error);
+      }
+    } catch (err) {
+      console.error("Registration error:", err);
+      setError("Failed to connect to server");
+    }
   }
 
   return (
@@ -37,9 +52,10 @@ export default function RegisterPage() {
       />
       <input
         type="text"
-        placeholder="Name"
-        value={form.name}
-        onChange={(e) => setForm({ ...form, name: e.target.value })}
+        placeholder="Username"
+        value={form.username}
+        onChange={(e) => setForm({ ...form, username: e.target.value })}
+        required
       />
       <input
         type="password"

@@ -10,7 +10,6 @@ app = Flask(__name__)
 CORS(app, origins=["http://localhost:3000"],supports_credentials=True)
 app.secret_key = os.getenv("SECRET_KEY", "your-secret-key")  # Use a strong secret in production
 DB_URL = os.getenv("DATABASE_URL","postgresql://postgres:admin@db:5432/test")
-#Use your own link here
 
 games = {
     "conn4": {
@@ -99,20 +98,31 @@ def run_tests_on_group(groupname, game):
     results = {"group": groupname, "agent": group_agent["name"], "matches": []}
 
     GroupAgentClass = load_class_from_file(group_file, group_class_name)
+    group_agent_name = group_agent["name"]
 
     for test_file, test_class in game_info["tests"]:
         test_path = os.path.join("games", game, "agents", "test", test_file)
         TestAgentClass = load_class_from_file(test_path, test_class)
 
+        test_agent_name = test_class  # <- move inside the loop
+
         game_instance = GameClass(GroupAgentClass(), TestAgentClass())
         winner = game_instance.play()
 
+        if winner == "X":
+            winner_name = group_agent_name
+        elif winner == "O":
+            winner_name = test_agent_name
+        else:
+            winner_name = "Draw"
+        
         results["matches"].append({
-            "test_agent": test_class,
-            "winner": winner
+            "test_agent": test_agent_name,
+            "winner": winner_name
         })
 
     return results
+
 
 def run_group_vs_group(group1, group2, game):
     if game not in games:
@@ -123,7 +133,7 @@ def run_group_vs_group(group1, group2, game):
     game_module = __import__(game_info["module"], fromlist=["Game"])
     GameClass = getattr(game_module, "Game")
 
-    # Fetch latest agents from each group
+    # Fetch agents from each group
     agent1 = fetch_latest_agent(group1, game)
     agent2 = fetch_latest_agent(group2, game)
 
@@ -141,11 +151,18 @@ def run_group_vs_group(group1, group2, game):
     # Run the match
     game_instance = GameClass(Agent1Class(), Agent2Class())
     winner = game_instance.play()
+    if winner == "X":
+        winner_agent = agent1["name"]
+    elif winner == "O":
+        winner_agent = agent2["name"]
+    else:
+        winner_agent = "Draw"
+
 
     results = {
         "group1": {"name": group1, "agent": agent1["name"]},
         "group2": {"name": group2, "agent": agent2["name"]},
-        "winner": winner
+        "winner": winner_agent
     }
 
     return results

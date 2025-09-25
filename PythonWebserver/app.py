@@ -9,7 +9,7 @@ import os
 app = Flask(__name__)
 CORS(app, origins=["http://localhost:3000"],supports_credentials=True)
 app.secret_key = os.getenv("SECRET_KEY", "your-secret-key")  # Use a strong secret in production
-DB_URL = os.getenv("DATABASE_URL")
+DB_URL = os.getenv("DATABASE_URL","postgresql://postgres:admin@db:5432/test")
 #Use your own link here
 
 games = {
@@ -123,11 +123,9 @@ def run_group_vs_group(group1, group2, game):
     game_module = __import__(game_info["module"], fromlist=["Game"])
     GameClass = getattr(game_module, "Game")
 
-    # Fetch agents from each group
+    # Fetch latest agents from each group
     agent1 = fetch_latest_agent(group1, game)
     agent2 = fetch_latest_agent(group2, game)
-    app.logger.info(agent1["name"])
-    app.logger.info(agent2["name"])
 
     if not agent1:
         return {"error": f"No agent found for group: {group1}"}

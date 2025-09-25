@@ -1,25 +1,29 @@
+'''
 import psycopg2
 import os
 
 #TODO: Refactor this script to be a script to create the database and set it up. Move all testing to appTesting.py
 
-DB_URL = os.getenv("DATABASE_URL", "postgresql://postgres:admin@localhost:5432/test") #Use your own link here
+DB_URL = os.getenv("DATABASE_URL")
 
 def get_db_connection(URL):
     return psycopg2.connect(URL)
 
 # Replace this with your postgres password during setup.
-user_name = "postgres"
-password = "admin"
+user_name = os.getenv("POSTGRES_USER", "postgres")
+password = os.getenv("POSTGRES_PASSWORD", "admin")
+host = "db"
+port = "5432"
+db_name = "test"
 
+# Step 1: connect to default 'postgres' DB to create/drop 'test'
 conn = psycopg2.connect(
     dbname="postgres",
     user=user_name,
     password=password,
-    host="localhost",
-    port="5432"
+    host=host,
+    port=port
 )
-
 conn.autocommit = True
 cur = conn.cursor()
 
@@ -65,7 +69,7 @@ CREATE TABLE agents (
     group_id INT NOT NULL REFERENCES groups(group_id) ON DELETE CASCADE,
     name VARCHAR(50) NOT NULL,
     game varchar(50) NOT NULL,
-    filename varchar(30),
+    file_path varchar(30),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 """)
@@ -124,3 +128,95 @@ for row in cur.fetchall():
 #     print(f"agent_id={row[0]}, agent_name={row[1]}, file_path={row[2]}, groupname={row[3]}, game={row[4]}")
 
 print("Success")
+'''
+
+
+import psycopg2
+import os
+
+user_name = os.getenv("POSTGRES_USER", "postgres")
+password = os.getenv("POSTGRES_PASSWORD", "admin")
+host = "db"
+port = "5432"
+db_name = "test"
+
+# Step 1: connect to default 'postgres' DB to create/drop 'test'
+conn = psycopg2.connect(
+    dbname="postgres",
+    user=user_name,
+    password=password,
+    host=host,
+    port=port
+)
+conn.autocommit = True
+cur = conn.cursor()
+
+# Drop + recreate database
+cur.execute(f"SELECT 1 FROM pg_database WHERE datname = '{db_name}'")
+if cur.fetchone():
+    cur.execute(f"DROP DATABASE {db_name}")
+cur.execute(f"CREATE DATABASE {db_name}")
+
+cur.close()
+conn.close()
+
+# Step 2: connect directly to 'test' and build schema
+conn = psycopg2.connect(
+    dbname=db_name,
+    user=user_name,
+    password=password,
+    host=host,
+    port=port
+)
+cur = conn.cursor()
+
+# Schema
+cur.execute("""
+CREATE TABLE groups (
+    group_id SERIAL PRIMARY KEY,
+    groupname VARCHAR UNIQUE NOT NULL
+);
+""")
+
+cur.execute("""
+CREATE TABLE users (
+    user_id SERIAL PRIMARY KEY,
+    username VARCHAR(50) UNIQUE NOT NULL,
+    email VARCHAR(50) UNIQUE NOT NULL,
+    hashed_password TEXT NOT NULL,
+    role VARCHAR(20) NOT NULL,
+    group_id INT REFERENCES groups(group_id) ON DELETE SET NULL
+);
+""")
+
+cur.execute("""
+CREATE TABLE agents (
+    agent_id SERIAL PRIMARY KEY,
+    group_id INT NOT NULL REFERENCES groups(group_id) ON DELETE CASCADE,
+    name VARCHAR(50) NOT NULL,
+    game varchar(50) NOT NULL,
+    file_path varchar(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+""")
+
+cur.execute("""
+CREATE TABLE matches (
+    match_id SERIAL PRIMARY KEY,
+    agent1_id INT NOT NULL REFERENCES agents(agent_id) ON DELETE CASCADE,
+    agent2_id INT NOT NULL REFERENCES agents(agent_id) ON DELETE CASCADE,
+    group1_id INT NOT NULL REFERENCES groups(group_id) ON DELETE CASCADE,
+    group2_id INT NOT NULL REFERENCES groups(group_id) ON DELETE CASCADE,
+    played_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+""")
+
+# Insert some seed data
+cur.execute("INSERT INTO groups (groupname) VALUES (%s)", ("group1",))
+cur.execute("INSERT INTO groups (groupname) VALUES (%s)", ("group2",))
+
+conn.commit()
+cur.close()
+conn.close()
+
+print("✅ Database setup complete.")

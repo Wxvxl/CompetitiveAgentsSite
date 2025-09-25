@@ -9,7 +9,8 @@ import os
 app = Flask(__name__)
 CORS(app, origins=["http://localhost:3000"],supports_credentials=True)
 app.secret_key = os.getenv("SECRET_KEY", "your-secret-key")  # Use a strong secret in production
-DB_URL = os.getenv("DATABASE_URL", "postgresql://postgres:admin@localhost:5432/test") #Use your own link here
+DB_URL = os.getenv("DATABASE_URL")
+#Use your own link here
 
 games = {
     "conn4": {
@@ -49,6 +50,29 @@ def fetch_agents(groupname, game):
     conn.close()
     return [{"agent_id": row[0], "name": row[1], "file_path": row[2]} for row in agents]
 
+# newly added funtion to fetch the latest data:
+def fetch_latest_agent(groupname, game):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""           
+        SELECT a.agent_id, a.name, a.file_path
+        FROM agents a
+        JOIN groups g ON a.group_id = g.group_id
+        WHERE g.groupname = %s
+          AND a.game = %s 
+        ORDER BY a.created_at DESC 
+        LIMIT 1
+    """, (groupname, game))
+    row = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    if row:
+        return {"agent_id": row[0], "name": row[1], "file_path": row[2]}
+    return None
+
+
+
+
 def load_class_from_file(filepath, class_name):
     """Dynamically load a class from a file."""
     module_name = os.path.splitext(os.path.basename(filepath))[0]
@@ -65,11 +89,10 @@ def run_tests_on_group(groupname, game):
     game_module = __import__(game_info["module"], fromlist=["Game"])
     GameClass = getattr(game_module, "Game")
 
-    agents = fetch_agents(groupname, game)
-    if not agents:
-        return {"error": f"No agents found for group: {groupname}"}
+    group_agent = fetch_latest_agent(groupname, game)
+    if not group_agent:
+        return {"error": f"No agent found for group: {groupname}"}
 
-    group_agent = agents[0]  #TODO: Write code to pick the latest agent from the DB.
     group_file = group_agent["file_path"]
     group_class_name = game_info["agent"]
 
@@ -101,17 +124,15 @@ def run_group_vs_group(group1, group2, game):
     GameClass = getattr(game_module, "Game")
 
     # Fetch agents from each group
-    agents1 = fetch_agents(group1, game)
-    agents2 = fetch_agents(group2, game)
+    agent1 = fetch_latest_agent(group1, game)
+    agent2 = fetch_latest_agent(group2, game)
+    app.logger.info(agent1["name"])
+    app.logger.info(agent2["name"])
 
-    if not agents1:
-        return {"error": f"No agents found for group: {group1}"}
-    if not agents2:
-        return {"error": f"No agents found for group: {group2}"}
-
-    # TODO: refine later, just pick index 0 for now
-    agent1 = agents1[0]
-    agent2 = agents2[0]
+    if not agent1:
+        return {"error": f"No agent found for group: {group1}"}
+    if not agent2:
+        return {"error": f"No agent found for group: {group2}"}
 
     agent_class_name = game_info["agent"]
 

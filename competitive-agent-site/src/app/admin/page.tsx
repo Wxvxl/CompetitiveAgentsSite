@@ -1,11 +1,11 @@
 "use client";
-import AgentListPage from "./agents";
+import AgentUpload from "./agents";
 
 export default function AdminPage() {
   return (
     <section>
       <h2>Admin Panel</h2>
-      <AgentListPage />
+      <AgentUpload game="conn4" />
       {/* Add more admin features here */}
     </section>
   );

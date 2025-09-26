@@ -3,14 +3,14 @@ import os
 
 #TODO: Refactor this script to be a script to create the database and set it up. Move all testing to appTesting.py
 
-DB_URL = os.getenv("DATABASE_URL", "postgresql://postgres:admin@localhost:5432/test") #Use your own link here
+DB_URL = os.getenv("DATABASE_URL", "postgresql://postgres:Zyx210915.@localhost:5432/test") #Use your own link here
 
-def get_db_connection(URL):
-    return psycopg2.connect(URL)
+def get_db_connection():
+    return psycopg2.connect(DB_URL)
 
 # Replace this with your postgres password during setup.
 user_name = "postgres"
-password = "admin"
+password = "Zyx210915."
 
 conn = psycopg2.connect(
     dbname="postgres",
@@ -32,9 +32,21 @@ if cur.fetchone():
     
 cur.execute(f"CREATE DATABASE {db_name}")
 
+# After creating database, close the first connection properly
+cur.close()
+conn.close()
+
 conn = psycopg2.connect(DB_URL)
 
 cur = conn.cursor()
+
+# Drop existing tables first (in correct order due to foreign key constraints)
+cur.execute("""
+DROP TABLE IF EXISTS matches CASCADE;
+DROP TABLE IF EXISTS agents CASCADE;
+DROP TABLE IF EXISTS users CASCADE;
+DROP TABLE IF EXISTS groups CASCADE;
+""")
 
 # Database setup code
 # NOTE: Serial is better instead of integer, as serial is an automatic incrementer for user ID!
@@ -80,7 +92,7 @@ CREATE TABLE matches (
     played_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 """)
-
+conn.commit() 
 # Database Testing Insert Scripts
 
 # Inserting Groups
@@ -89,6 +101,8 @@ group1_id = cur.fetchone()[0]
 
 cur.execute("INSERT INTO groups (groupname) VALUES (%s) RETURNING group_id;", ("group2",))
 group2_id = cur.fetchone()[0]
+
+conn.commit()
 
 # TODO: Agent insertion is currently unavailable!
 # # Inserting Agents
@@ -122,5 +136,13 @@ for row in cur.fetchall():
 # """)
 # for row in cur.fetchall():
 #     print(f"agent_id={row[0]}, agent_name={row[1]}, file_path={row[2]}, groupname={row[3]}, game={row[4]}")
-
+# Add this right before the final "Success" print
+print("\n=== Checking Tables ===")
+cur.execute("""
+    SELECT table_name 
+    FROM information_schema.tables 
+    WHERE table_schema = 'public';
+""")
+tables = cur.fetchall()
+print("Existing tables:", [table[0] for table in tables])
 print("Success")

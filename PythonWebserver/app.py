@@ -7,9 +7,10 @@ import bcrypt
 import os
 
 app = Flask(__name__)
-CORS(app, origins=["http://localhost:3000"],supports_credentials=True)
+CORS(app, origins=["http://localhost:3000", "http://100.112.255.106:3000"], supports_credentials=True)
 app.secret_key = os.getenv("SECRET_KEY", "your-secret-key")  # Use a strong secret in production
-DB_URL = os.getenv("DATABASE_URL","postgresql://postgres:admin@db:5432/test")
+
+DB_URL = os.getenv("DATABASE_URL", "postgresql://postgres:Zyx210915.@localhost:5432/test") #Use your own link here
 
 games = {
     "conn4": {
@@ -261,7 +262,7 @@ def play_group_vs_group(group1, group2, game):
 @app.route("/api/register", methods=["POST"])
 def register():
     data = request.json
-    username = data.get("name")
+    username = data.get("username")
     email = data.get("email")
     password = data.get("password")
     role = data.get("role", "student")
@@ -321,12 +322,33 @@ def logout():
 def me():
     if "user_id" not in session:
         return jsonify({"error": "Not authenticated"}), 401
-    return jsonify({
-        "user": {
-            "id": session["user_id"],
-            "email": session["email"],
-        }
-    })
+    
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT user_id, username, email, role, group_id FROM users WHERE user_id = %s",
+            (session["user_id"],)
+        )
+        user = cur.fetchone()
+        cur.close()
+
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
+        return jsonify({
+            "user": {
+                "id": user[0],
+                "username": user[1],
+                "email": user[2],
+                "role": user[3],
+                "group_id": user[4]
+            }
+        })
+    finally:
+        if conn:
+            conn.close()
 
 @app.route("/api/login", methods=["POST"])
 def login():

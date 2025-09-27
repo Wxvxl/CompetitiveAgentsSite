@@ -24,8 +24,12 @@ if cur.fetchone():
     cur.execute(f"DROP DATABASE {db_name}")
 cur.execute(f"CREATE DATABASE {db_name}")
 
+
+# After creating database, close the first connection properly
 cur.close()
 conn.close()
+
+conn = psycopg2.connect(DB_URL)
 
 # Step 2: connect directly to 'test' and build schema
 conn = psycopg2.connect(
@@ -38,6 +42,16 @@ conn = psycopg2.connect(
 cur = conn.cursor()
 
 # Schema
+# Drop existing tables first (in correct order due to foreign key constraints)
+cur.execute("""
+DROP TABLE IF EXISTS matches CASCADE;
+DROP TABLE IF EXISTS agents CASCADE;
+DROP TABLE IF EXISTS users CASCADE;
+DROP TABLE IF EXISTS groups CASCADE;
+""")
+
+# Database setup code
+# NOTE: Serial is better instead of integer, as serial is an automatic incrementer for user ID!
 cur.execute("""
 CREATE TABLE groups (
     group_id SERIAL PRIMARY KEY,

@@ -1,5 +1,5 @@
 "use client";
-import AgentListPage from "./agents";
+import AgentListPage from "./agentlist";
 
 export default function AdminPage() {
   return (

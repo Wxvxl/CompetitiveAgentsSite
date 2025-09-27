@@ -1,36 +1,29 @@
 import psycopg2
 import os
 
-#TODO: Refactor this script to be a script to create the database and set it up. Move all testing to appTesting.py
+user_name = os.getenv("POSTGRES_USER", "postgres")
+password = os.getenv("POSTGRES_PASSWORD", "admin")
+host = "db"
+port = "5432"
+db_name = "test"
 
-DB_URL = os.getenv("DATABASE_URL", "postgresql://postgres:Zyx210915.@localhost:5432/test") #Use your own link here
-
-def get_db_connection():
-    return psycopg2.connect(DB_URL)
-
-# Replace this with your postgres password during setup.
-user_name = "postgres"
-password = "Zyx210915."
-
+# Step 1: connect to default 'postgres' DB to create/drop 'test'
 conn = psycopg2.connect(
     dbname="postgres",
     user=user_name,
     password=password,
-    host="localhost",
-    port="5432"
+    host=host,
+    port=port
 )
-
 conn.autocommit = True
 cur = conn.cursor()
 
-db_name = "test" # Replace this with your testing name!
-    
+# Drop + recreate database
 cur.execute(f"SELECT 1 FROM pg_database WHERE datname = '{db_name}'")
-
 if cur.fetchone():
     cur.execute(f"DROP DATABASE {db_name}")
-    
 cur.execute(f"CREATE DATABASE {db_name}")
+
 
 # After creating database, close the first connection properly
 cur.close()
@@ -38,8 +31,17 @@ conn.close()
 
 conn = psycopg2.connect(DB_URL)
 
+# Step 2: connect directly to 'test' and build schema
+conn = psycopg2.connect(
+    dbname=db_name,
+    user=user_name,
+    password=password,
+    host=host,
+    port=port
+)
 cur = conn.cursor()
 
+# Schema
 # Drop existing tables first (in correct order due to foreign key constraints)
 cur.execute("""
 DROP TABLE IF EXISTS matches CASCADE;
@@ -57,9 +59,6 @@ CREATE TABLE groups (
 );
 """)
 
-# NOTE: All of the table should be VARCHAR! String is unlimited length!
-# Role and IsAdmin can be merged.
-# Agents shouldn't be related to users instead be connected to groups only.
 cur.execute("""
 CREATE TABLE users (
     user_id SERIAL PRIMARY KEY,
@@ -77,7 +76,7 @@ CREATE TABLE agents (
     group_id INT NOT NULL REFERENCES groups(group_id) ON DELETE CASCADE,
     name VARCHAR(50) NOT NULL,
     game varchar(50) NOT NULL,
-    filename varchar(30),
+    file_path varchar(255),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 """)
@@ -92,57 +91,9 @@ CREATE TABLE matches (
     played_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 """)
-conn.commit() 
-# Database Testing Insert Scripts
-
-# Inserting Groups
-cur.execute("INSERT INTO groups (groupname) VALUES (%s) RETURNING group_id;", ("group1",))
-group1_id = cur.fetchone()[0]
-
-cur.execute("INSERT INTO groups (groupname) VALUES (%s) RETURNING group_id;", ("group2",))
-group2_id = cur.fetchone()[0]
 
 conn.commit()
+cur.close()
+conn.close()
 
-# TODO: Agent insertion is currently unavailable!
-# # Inserting Agents
-# cur.execute("""
-#     INSERT INTO agents (group_id, name, game, file_path)
-#     VALUES (%s, %s, %s, %s)
-#     RETURNING agent_id;
-# """, (group1_id, "Group 1 Agent", "conn4","games/conn4/agents/students/group1/group1agent.py"))
-
-# cur.execute("""
-#     INSERT INTO agents (group_id, name, game, file_path)
-#     VALUES (%s, %s, %s, %s)
-#     RETURNING agent_id;
-# """, (group2_id, "Group 2 Agent", "conn4","games/conn4/agents/students/group2/group2agent.py"))
-
-# conn.commit()
-
-# Testing Code
-# Fetch groups
-print("=== Groups ===")
-cur.execute("SELECT * FROM groups;")
-for row in cur.fetchall():
-    print(f"group_id={row[0]}, groupname={row[1]}")
-
-# # Fetch agents
-# print("\n=== Agents ===")
-# cur.execute("""
-#     SELECT a.agent_id, a.name AS agent_name, a.file_path, g.groupname, a.game
-#     FROM agents a
-#     JOIN groups g ON a.group_id = g.group_id;
-# """)
-# for row in cur.fetchall():
-#     print(f"agent_id={row[0]}, agent_name={row[1]}, file_path={row[2]}, groupname={row[3]}, game={row[4]}")
-# Add this right before the final "Success" print
-print("\n=== Checking Tables ===")
-cur.execute("""
-    SELECT table_name 
-    FROM information_schema.tables 
-    WHERE table_schema = 'public';
-""")
-tables = cur.fetchall()
-print("Existing tables:", [table[0] for table in tables])
-print("Success")
+print("✅ Database setup complete.")

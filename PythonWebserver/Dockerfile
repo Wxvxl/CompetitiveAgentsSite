@@ -15,6 +15,3 @@ COPY . .
 
 # Expose port
 EXPOSE 5000
-
-# Run database initialization and start Flask
-CMD ["sh", "-c", "python db/init_db.py && flask run --host=0.0.0.0"]

@@ -10,7 +10,7 @@ app = Flask(__name__)
 CORS(app, origins=["http://localhost:3000", "http://100.112.255.106:3000"], supports_credentials=True)
 app.secret_key = os.getenv("SECRET_KEY", "your-secret-key")  # Use a strong secret in production
 
-DB_URL = os.getenv("DATABASE_URL", "postgresql://postgres:Zyx210915.@localhost:5432/test") #Use your own link here
+DB_URL = os.getenv("DATABASE_URL") # Setup the DB url in a .env
 
 games = {
     "conn4": {
@@ -69,8 +69,6 @@ def fetch_latest_agent(groupname, game):
     if row:
         return {"agent_id": row[0], "name": row[1], "file_path": row[2]}
     return None
-
-
 
 
 def load_class_from_file(filepath, class_name):

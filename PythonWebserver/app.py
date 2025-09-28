@@ -33,6 +33,21 @@ games = {
 
 def get_db_connection():
     return psycopg2.connect(DB_URL)
+
+
+def require_login():
+    if "user_id" not in session:
+        return jsonify({"error": "Not authenticated"}), 401
+    return None
+
+
+def require_admin():
+    auth_error = require_login()
+    if auth_error:
+        return auth_error
+    if session.get("role") != "admin":
+        return jsonify({"error": "Admin access required"}), 403
+    return None
     
 # Fetch an agent from a group for a specific game
 def fetch_agents(groupname, game):
@@ -258,6 +273,186 @@ def play_group_vs_group(group1, group2, game):
         return jsonify(results)
     except Exception as e:
         return jsonify({"error": str(e)}), 400
+
+@app.route("/api/groups", methods=["GET"])
+def list_groups():
+    auth_error = require_login()
+    if auth_error:
+        return auth_error
+
+    conn = None
+    cur = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT group_id, groupname FROM groups ORDER BY groupname;")
+        groups = [{"id": row[0], "name": row[1]} for row in cur.fetchall()]
+        return jsonify({"groups": groups})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
+@app.route("/api/groups", methods=["POST"])
+def create_group():
+    auth_error = require_admin()
+    if auth_error:
+        return auth_error
+
+    data = request.json or {}
+    name = data.get("name") or data.get("groupname")
+    if not name:
+        return jsonify({"error": "Group name is required"}), 400
+
+    conn = None
+    cur = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO groups (groupname) VALUES (%s) RETURNING group_id, groupname;",
+            (name.strip(),)
+        )
+        group_id, groupname = cur.fetchone()
+        conn.commit()
+        return jsonify({"group": {"id": group_id, "name": groupname}}), 201
+    except errors.UniqueViolation:
+        if conn:
+            conn.rollback()
+        return jsonify({"error": "Group name already exists"}), 400
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
+@app.route("/api/users", methods=["GET"])
+def list_users():
+    auth_error = require_admin()
+    if auth_error:
+        return auth_error
+
+    conn = None
+    cur = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT u.user_id, u.username, u.email, u.role, u.group_id, g.groupname
+            FROM users u
+            LEFT JOIN groups g ON g.group_id = u.group_id
+            WHERE u.role = 'student'
+            ORDER BY u.username;
+            """
+        )
+        users = [
+            {
+                "id": row[0],
+                "username": row[1],
+                "email": row[2],
+                "role": row[3],
+                "group_id": row[4],
+                "group_name": row[5],
+            }
+            for row in cur.fetchall()
+        ]
+        return jsonify({"users": users})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
+@app.route("/api/users/<int:user_id>/group", methods=["PUT"])
+def assign_user_group(user_id):
+    auth_error = require_admin()
+    if auth_error:
+        return auth_error
+
+    data = request.json or {}
+    group_id_raw = data.get("group_id")
+
+    group_id = None
+    if group_id_raw not in (None, "", "null"):
+        try:
+            group_id = int(group_id_raw)
+        except (TypeError, ValueError):
+            return jsonify({"error": "Invalid group_id"}), 400
+
+    conn = None
+    cur = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        if group_id is not None:
+            cur.execute("SELECT 1 FROM groups WHERE group_id = %s;", (group_id,))
+            if cur.fetchone() is None:
+                return jsonify({"error": "Group not found"}), 404
+
+        cur.execute("SELECT role FROM users WHERE user_id = %s;", (user_id,))
+        role_row = cur.fetchone()
+        if role_row is None:
+            return jsonify({"error": "User not found"}), 404
+        if role_row[0] != "student":
+            return jsonify({"error": "Only students can be assigned to a group"}), 400
+
+        cur.execute(
+            """
+            UPDATE users
+            SET group_id = %s
+            WHERE user_id = %s
+            RETURNING user_id, username, email, role, group_id;
+            """,
+            (group_id, user_id)
+        )
+        row = cur.fetchone()
+        if row is None:
+            conn.rollback()
+            return jsonify({"error": "User not found"}), 404
+
+        group_name = None
+        if row[4] is not None:
+            cur.execute("SELECT groupname FROM groups WHERE group_id = %s;", (row[4],))
+            fetched = cur.fetchone()
+            group_name = fetched[0] if fetched else None
+
+        conn.commit()
+        return jsonify(
+            {
+                "user": {
+                    "id": row[0],
+                    "username": row[1],
+                    "email": row[2],
+                    "role": row[3],
+                    "group_id": row[4],
+                    "group_name": group_name,
+                }
+            }
+        )
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
 
 @app.route("/api/register", methods=["POST"])
 def register():

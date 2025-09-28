@@ -16,7 +16,7 @@ export default function AgentUpload({ game }: { game: string }) {
     const formData = new FormData();
     formData.append("file", file);
 
-    const res = await fetch(`http://localhost:5000/agents/upload/${game}`, {
+    const res = await fetch(`http://localhost:5001/agents/upload/${game}`, {
       method: "POST",
       body: formData,
       credentials: "include",

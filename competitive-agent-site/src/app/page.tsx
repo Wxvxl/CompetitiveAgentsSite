@@ -16,7 +16,7 @@ export default function DashboardPage() {
   const [message, setMessage] = useState("");
 
   async function fetchMe() {
-    const res = await fetch("http://localhost:5000/api/me", {
+    const res = await fetch("http://localhost:5001/api/me", {
       credentials: "include",
     });
     const data = await res.json();
@@ -25,7 +25,7 @@ export default function DashboardPage() {
   }
 
   async function handleLogout() {
-    await fetch("http://localhost:5000/api/logout", {
+    await fetch("http://localhost:5001/api/logout", {
       method: "POST",
       credentials: "include",
     });
@@ -44,7 +44,7 @@ export default function DashboardPage() {
     }
     const formData = new FormData();
     formData.append("file", file);
-    const res = await fetch("http://localhost:5000/api/upload_agent", {
+    const res = await fetch("http://localhost:5001/api/upload_agent", {
       method: "POST",
       body: formData,
       credentials: "include",

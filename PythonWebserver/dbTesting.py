@@ -29,7 +29,7 @@ cur.execute(f"CREATE DATABASE {db_name}")
 cur.close()
 conn.close()
 
-conn = psycopg2.connect(DB_URL)
+#conn = psycopg2.connect(DB_URL)
 
 # Step 2: connect directly to 'test' and build schema
 conn = psycopg2.connect(

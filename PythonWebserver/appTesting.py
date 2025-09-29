@@ -86,7 +86,7 @@ cur.execute(
 
 cur.execute(
     "INSERT INTO agents (group_id, name, game, file_path) VALUES (%s, %s, %s, %s);",
-    (group1_id, "g1agent", "TTT", os.path.join(base_path, "tictactoe", "agents", "students", "group1", "g1agent.py"))
+    (group1_id, "g1agent", "tictactoe", os.path.join(base_path, "tictactoe", "agents", "students", "group1", "g1agent.py"))
 )
 
 
@@ -97,7 +97,7 @@ cur.execute(
 
 cur.execute(
     "INSERT INTO agents (group_id, name, game, file_path) VALUES (%s, %s, %s, %s);",
-    (group2_id, "g2agent", "TTT", os.path.join(base_path, "tictactoe", "agents", "students", "group2", "g2agent.py"))
+    (group2_id, "g2agent", "tictactoe", os.path.join(base_path, "tictactoe", "agents", "students", "group2", "g2agent.py"))
 )
 
 print("Inserted Agents")
@@ -175,6 +175,18 @@ def test_create_group(email, password, groupname):
             return True
     return False
 
+def test_run_tests_endpoint(groupname, game):
+    client = flask_app.test_client()
+    
+    response = client.get(f'/play/run_tests/{groupname}/{game}')
+    
+    if response.status_code == 200:
+        data = response.get_json()
+        # Check for expected structure (e.g., "group", "agent", "matches")
+        if "group" in data and "matches" in data:
+            return True
+    return False
+
 # Register Tests
 assert test_register("testuser1", "testuser1@test.com", "password", "student") == True
 assert test_register("testuser2", "testuser2@test.com", "password", "student") == True
@@ -202,6 +214,8 @@ assert test_create_group("user1@example.com", "password1", "newgroup") == False 
 assert test_create_group("invalid@example.com", "password", "anothergroup") == False  # Invalid login
 print("Invalid create group test passed")
 
+assert test_run_tests_endpoint("group1", "conn4") == True
+assert test_run_tests_endpoint("group1", "tictactoe") == True
 print("All pytest checks passed!")
 
 cur.close()

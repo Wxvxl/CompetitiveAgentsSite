@@ -316,6 +316,51 @@ def logout():
     session.clear()
     return jsonify({"message": "Logged out"})
 
+@app.route("/api/create_group", methods=["POST"])
+def create_group():
+    if "user_id" not in session:
+        return jsonify({"error": "Not authenticated"}), 401
+    data = request.json
+    groupname = data.get("groupname")
+    
+    if not groupname:
+        return jsonify({"error": "Group name required"}), 400
+    
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO groups (groupname) VALUES (%s) RETURNING group_id;",
+            (groupname,)
+        )
+        
+        group_id = cur.fetchone()[0]
+        conn.commit()
+        cur.close()
+        
+        return jsonify({
+            "message":"Group created successfully",
+            "group": {
+                "id": group_id,
+                "name": groupname
+            }
+        })
+        
+    except errors.UniqueViolation:
+        if conn:
+            conn.rollback()
+        return jsonify({"error": "Group name already exists"}), 400
+    
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    
+    finally:
+        if conn:
+            conn.close()
+    
+
 @app.route("/api/me", methods=["GET"])
 def me():
     if "user_id" not in session:
@@ -350,7 +395,7 @@ def me():
 
 @app.route("/api/login", methods=["POST"])
 def login():
-    data = request.json
+    data = request.json 
     email = data.get("email")
     password = data.get("password")
 

@@ -160,6 +160,21 @@ def test_login(email, password):
             return True
     return False
 
+def test_create_group(email, password, groupname):
+    client = flask_app.test_client()
+    
+    login_data = {"email": email, "password": password}
+    login_response = client.post('/api/login', json=login_data)
+
+    create_data = {"groupname": groupname}
+    response = client.post('/api/create_group', json=create_data)
+
+    if response.status_code == 200:
+        data = response.get_json()
+        if "group" in data and data["group"]["name"] == groupname:
+            return True
+    return False
+
 # Register Tests
 assert test_register("testuser1", "testuser1@test.com", "password", "student") == True
 assert test_register("testuser2", "testuser2@test.com", "password", "student") == True
@@ -175,9 +190,18 @@ print("Invalid Registration test passed")
 assert test_login("user1@example.com", "password1") == True
 print("Successful login test passed")
 
-assert test_login("user1@example.com", "wrongpassword") == False #Wrong Password
+assert test_login("user1@example.com", "wrongpassword") == False # Wrong Password
 assert test_login("2user1@example.com", "password") == False # Not a real user
 print("Invalid login test failed")
+
+# Create Group Tests
+assert test_create_group("user1@example.com", "password1", "newgroup") == True
+print("Successful create group test passed")
+
+assert test_create_group("user1@example.com", "password1", "newgroup") == False  # Duplicate group name
+assert test_create_group("invalid@example.com", "password", "anothergroup") == False  # Invalid login
+print("Invalid create group test passed")
+
 print("All pytest checks passed!")
 
 cur.close()

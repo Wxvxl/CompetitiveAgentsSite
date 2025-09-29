@@ -1,14 +1,11 @@
 "use client";
 import React from "react";
 import Button from "../components/ui/Button";
-import Modal from "../components/ui/Modal";
-import AgentUploadForm from "../components/forms/AgentUploadForm";
 import useAuth from "../hooks/useAuth";
-import useModal from "../hooks/useModal";
+import StudentAgentPanel from "../components/agents/StudentAgentPanel";
 
 export default function DashboardPage() {
   const { user, loading, logout, isAdmin } = useAuth();
-  const { open, openModal, closeModal } = useModal(false);
 
   return (
     <section>
@@ -18,22 +15,18 @@ export default function DashboardPage() {
       ) : user ? (
         <>
           <p>Welcome, {user.email}!</p>
-          {isAdmin && (
+          {isAdmin ? (
             <p>
               <strong>You are an admin.</strong>
               <br />
               <a href="/admin">Go to Admin Panel</a>
             </p>
+          ) : (
+            <StudentAgentPanel />
           )}
           <Button onClick={logout} variant="ghost">
             Logout
           </Button>
-          <Button onClick={openModal} style={{ marginLeft: 8 }}>
-            Submit Agent
-          </Button>
-          <Modal isOpen={open} onClose={closeModal} title="Upload Agent">
-            <AgentUploadForm onUploaded={() => closeModal()} />
-          </Modal>
         </>
       ) : (
         <ul>

@@ -15,7 +15,9 @@ export default function useAuth() {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("http://localhost:5000/api/me", { credentials: "include" });
+      const res = await fetch("http://localhost:5000/api/me", {
+        credentials: "include",
+      });
       const data = await res.json();
       setUser(res.ok ? data.user : null);
     } catch (e) {
@@ -27,9 +29,15 @@ export default function useAuth() {
 
   const logout = useCallback(async () => {
     try {
-      await fetch("http://localhost:5000/api/logout", { method: "POST", credentials: "include" });
+      await fetch("http://localhost:5000/api/logout", {
+        method: "POST",
+        credentials: "include",
+      });
     } finally {
       setUser(null);
+      if (typeof window !== "undefined") {
+        window.location.replace("/");
+      }
     }
   }, []);
 
@@ -41,5 +49,3 @@ export default function useAuth() {
 
   return { user, loading, refresh, logout, isAdmin } as const;
 }
-
-

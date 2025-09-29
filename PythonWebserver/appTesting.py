@@ -216,7 +216,7 @@ print("Successful login test passed")
 
 assert test_login("user1@example.com", "wrongpassword") == False # Wrong Password
 assert test_login("2user1@example.com", "password") == False # Not a real user
-print("Invalid login test failed")
+print("Invalid login test passed")
 
 # Create Group Tests
 assert test_create_group("user1@example.com", "password1", "newgroup") == True

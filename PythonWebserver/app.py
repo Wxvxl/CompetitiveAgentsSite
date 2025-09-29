@@ -295,7 +295,7 @@ def register():
                 "email": email,
                 "role": role,
             }
-        })
+        }), 201
         
     except errors.UniqueViolation:
         if conn:

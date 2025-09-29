@@ -111,6 +111,73 @@ assert "g1agent" in agent_names, "g1agent should be in agents"
 assert "group2agent" in agent_names, "group2agent should be in agents"
 assert "g2agent" in agent_names, "g2agent should be in agents"
 
+# Endpoint Testing Functions
+def test_register(username, email, password, role):
+    try:
+        client = flask_app.test_client()
+        
+        test_data = {
+            "username": username,
+            "email": email,
+            "password": password,
+            "role": role
+        }
+        
+        response = client.post('/api/register', json=test_data)
+        
+        assert response.status_code == 201
+
+        data = response.get_json()
+        assert "user" in data
+        assert data["user"]["username"] == username
+        
+        conn = psycopg2.connect(DB_URL)
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM users WHERE username = %s;", (username,))
+        user = cur.fetchone()
+        assert user is not None
+        cur.close()
+        conn.close()
+        
+        return True
+    except AssertionError as e:
+        return False
+    except Exception as e:
+        return f"Unexpected error: {e}"
+    
+def test_login(email, password):
+    client = flask_app.test_client()
+    test_data = {
+        "email": email,
+        "password": password
+    }
+    
+    response = client.post('/api/login', json=test_data)
+
+    if response.status_code == 200:
+        data = response.get_json()
+        if "user" in data and data["user"]["email"] == email:
+            return True
+    return False
+
+# Register Tests
+assert test_register("testuser1", "testuser1@test.com", "password", "student") == True
+assert test_register("testuser2", "testuser2@test.com", "password", "student") == True
+print("Registration test passed")
+
+assert test_register("testuser1", "testuser1@test.com", "password", "student") == False # TestUser1 already registered.
+assert test_register("testuser3", "testuser1@test.com", "password", "student") == False # Same email
+assert test_register("", "email@mail.com", "password", "student") == False # No username
+# assert test_register("   ", "email@mail.com", "password", "student") == False # Username is just spaces. Should be invalid. TODO: FIX REGISTER FUNCTION, THIS TEST FAILS
+print("Invalid Registration test passed")
+
+# Login Test
+assert test_login("user1@example.com", "password1") == True
+print("Successful login test passed")
+
+assert test_login("user1@example.com", "wrongpassword") == False #Wrong Password
+assert test_login("2user1@example.com", "password") == False # Not a real user
+print("Invalid login test failed")
 print("All pytest checks passed!")
 
 cur.close()

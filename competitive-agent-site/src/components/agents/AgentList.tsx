@@ -1,15 +1,19 @@
 "use client";
 import { useEffect, useState } from "react";
-import Table, { Column } from "../../components/ui/Table";
+import Table, { Column } from "../ui/Table";
 
-type Agent = {
+export type Agent = {
   id: number;
   filename: string;
   uploader: string;
   upload_time: string;
 };
 
-export default function AgentListPage() {
+export type AgentListProps = {
+  scope: "all" | "mine";
+};
+
+export default function AgentList({ scope }: AgentListProps) {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
@@ -17,9 +21,11 @@ export default function AgentListPage() {
     let active = true;
     (async () => {
       try {
-        const res = await fetch("http://localhost:5000/api/agents", {
-          credentials: "include",
-        });
+        const endpoint =
+          scope === "all"
+            ? "http://localhost:5000/api/agents"
+            : "http://localhost:5000/api/my_agents";
+        const res = await fetch(endpoint, { credentials: "include" });
         const data = await res.json();
         if (active) setAgents(Array.isArray(data) ? data : []);
       } catch (_) {
@@ -31,7 +37,7 @@ export default function AgentListPage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [scope]);
 
   const columns: Column<Agent>[] = [
     { key: "filename", header: "Filename" },
@@ -40,14 +46,11 @@ export default function AgentListPage() {
   ];
 
   return (
-    <section>
-      <h2>All Uploaded Agents</h2>
-      <Table
-        columns={columns}
-        data={agents}
-        isLoading={loading}
-        emptyText="No agents uploaded yet"
-      />
-    </section>
+    <Table
+      columns={columns}
+      data={agents}
+      isLoading={loading}
+      emptyText="No agents uploaded yet"
+    />
   );
 }

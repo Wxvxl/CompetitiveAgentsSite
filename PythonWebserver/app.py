@@ -21,7 +21,7 @@ games = {
         ],
         "agent": "C4Agent" # The agent name for every student.
     },
-    "TTT": {
+    "tictactoe": {
        "module" : "games.tictactoe.game",
        "tests": [
            ("firstavail.py", "FirstAvailableAgent"),

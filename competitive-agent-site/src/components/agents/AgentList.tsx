@@ -4,9 +4,11 @@ import Table, { Column } from "../ui/Table";
 
 export type Agent = {
   id: number;
-  filename: string;
-  uploader: string;
-  upload_time: string;
+  name: string;
+  game: string;
+  file_path: string;
+  created_at: string;
+  groupname?: string;
 };
 
 export type AgentListProps = {
@@ -19,30 +21,45 @@ export default function AgentList({ scope }: AgentListProps) {
 
   useEffect(() => {
     let active = true;
-    (async () => {
+
+    const fetchAgents = async () => {
       try {
         const endpoint =
           scope === "all"
-            ? "http://localhost:5000/api/agents"
-            : "http://localhost:5000/api/my_agents";
+            ? "http://localhost:5000/api/admin/agents"
+            : "http://localhost:5000/api/user/agents";
         const res = await fetch(endpoint, { credentials: "include" });
         const data = await res.json();
-        if (active) setAgents(Array.isArray(data) ? data : []);
-      } catch (_) {
+        if (!res.ok) throw new Error(data.error);
+        if (active) setAgents(data.agents || []);
+      } catch (err) {
+        console.error("Failed to fetch agents:", err);
         if (active) setAgents([]);
       } finally {
         if (active) setLoading(false);
       }
-    })();
+    };
+
+    fetchAgents();
+    window.addEventListener("agentUploaded", fetchAgents);
+
     return () => {
       active = false;
+      window.removeEventListener("agentUploaded", fetchAgents);
     };
   }, [scope]);
 
   const columns: Column<Agent>[] = [
-    { key: "filename", header: "Filename" },
-    { key: "uploader", header: "Uploader" },
-    { key: "upload_time", header: "Upload Time", width: 180 },
+    { key: "name", header: "Name" },
+    { key: "game", header: "Game" },
+    { key: "file_path", header: "Filename" },
+    ...(scope === "all" ? [{ key: "groupname", header: "Group" }] : []),
+    {
+      key: "created_at",
+      header: "Upload Time",
+      width: 180,
+      render: (row) => new Date(row.created_at).toLocaleString(),
+    },
   ];
 
   return (

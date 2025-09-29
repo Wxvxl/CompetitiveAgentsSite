@@ -6,16 +6,19 @@ export type AgentUploadFormProps = {
   endpoint?: string;
   onUploaded?: (filename: string) => void;
   maxSize?: number;
+  game?: string;
 };
 
 export default function AgentUploadForm({
-  endpoint = "http://localhost:5000/api/upload_agent",
+  endpoint = "http://localhost:5000/agents/upload",
   onUploaded,
   maxSize = 20,
+  game = "conn4",
 }: AgentUploadFormProps) {
   const [file, setFile] = useState<File | null>(null);
   const [message, setMessage] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
+  const [selectedGame, setSelectedGame] = useState(game);
 
   const validateFile = (file: File): string | null => {
     if (!file.name.endsWith(".py")) {
@@ -37,7 +40,7 @@ export default function AgentUploadForm({
     formData.append("file", file);
     setLoading(true);
     try {
-      const res = await fetch(endpoint, {
+      const res = await fetch(`${endpoint}/${selectedGame}`, {
         method: "POST",
         body: formData,
         credentials: "include",
@@ -45,7 +48,10 @@ export default function AgentUploadForm({
       const data = await res.json();
       setMessage(data.message || data.error || "");
       if (res.ok && onUploaded) onUploaded(file.name);
-      if (res.ok) setFile(null);
+      if (res.ok) {
+        setFile(null);
+        window.dispatchEvent(new Event("agentUploaded"));
+      }
     } catch (e) {
       setMessage("Upload failed");
     } finally {
@@ -55,6 +61,14 @@ export default function AgentUploadForm({
 
   return (
     <form onSubmit={handleSubmit}>
+      <select
+        value={selectedGame}
+        onChange={(e) => setSelectedGame(e.target.value)}
+        style={{ marginRight: 8 }}
+      >
+        <option value="conn4">Connect 4</option>
+        <option value="TTT">Tic Tac Toe</option>
+      </select>
       <input
         type="file"
         accept=".py"

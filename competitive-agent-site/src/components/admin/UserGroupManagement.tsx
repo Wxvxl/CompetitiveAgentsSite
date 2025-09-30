@@ -38,17 +38,23 @@ export default function UserGroupManagement() {
     }
   }
 
-  async function fetchGroups() {
-    try {
-      const res = await fetch("http://localhost:5001/api/groups", {
-        credentials: "include",
-      });
-      const data = await res.json();
-      if (res.ok) setGroups(data.groups);
-    } catch (err) {
-      setError("Failed to fetch groups");
+async function fetchGroups() {
+  try {
+    const res = await fetch("http://localhost:5001/api/groups", {
+      credentials: "include",
+    });
+    const data = await res.json();
+    if (res.ok) {
+      const normalized = (data.groups ?? []).map((group: any) => ({
+        group_id: group.group_id ?? group.id,
+        groupname: group.groupname ?? group.name,
+      }));
+      setGroups(normalized);
     }
+  } catch {
+    setError("Failed to fetch groups");
   }
+}
 
   async function handleAssignGroup(userId: number, groupId: string) {
     setLoading(true);

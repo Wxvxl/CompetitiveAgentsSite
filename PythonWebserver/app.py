@@ -168,6 +168,55 @@ def run_group_vs_group(group1, group2, game):
 
     return results
 
+@app.route("/api/admin/assign-group", methods=["POST"])
+def assign_group():
+    # Check admin authorization
+    if "role" not in session or session["role"] != "admin":
+        return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.json
+    user_id = data.get("user_id")
+    group_id = data.get("group_id")
+
+    if not user_id or group_id is None:
+        return jsonify({"error": "Missing fields"}), 400
+
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        # Update user's group
+        cur.execute(
+            "UPDATE users SET group_id = %s WHERE user_id = %s RETURNING user_id, username, email, role, group_id",
+            (group_id, user_id)
+        )
+        
+        updated_user = cur.fetchone()
+        conn.commit()
+        cur.close()
+
+        if not updated_user:
+            return jsonify({"error": "User not found"}), 404
+
+        return jsonify({
+            "user": {
+                "id": updated_user[0],
+                "username": updated_user[1],
+                "email": updated_user[2],
+                "role": updated_user[3],
+                "group_id": updated_user[4]
+            }
+        })
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn:
+            conn.close()
+
 @app.route("/agents/upload/<game>", methods=["POST"])
 def upload_agent(game):
     # Error Checking
@@ -199,7 +248,7 @@ def upload_agent(game):
         
         cur.execute(
             """
-            INSERT INTO agents (group_id, name, game, filename)
+            INSERT INTO agents (group_id, name, game, file_path)
             VALUES (%s, %s, %s, %s)
             RETURNING agent_id;
             """,
@@ -216,7 +265,7 @@ def upload_agent(game):
             "agent": {
                 "id": agent_id,
                 "group_id" : session["group_id"],
-                "filename": file.filename,
+                "file_path": file.filename,
                 "game": game
             }
         })
@@ -403,6 +452,152 @@ def login():
     finally:
         if conn:
             conn.close()
-    
+            
+@app.route("/api/users", methods=["GET"])
+def get_users():
+    # Check admin authorization
+    if "role" not in session or session["role"] != "admin":
+        return jsonify({"error": "Unauthorized"}), 401
+
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT user_id, username, email, role, group_id FROM users"
+        )
+        users = cur.fetchall()
+        cur.close()
+
+        return jsonify({
+            "users": [
+                {
+                    "id": user[0],
+                    "username": user[1],
+                    "email": user[2],
+                    "role": user[3],
+                    "group_id": user[4]
+                }
+                for user in users
+            ]
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn:
+            conn.close()
+            
+@app.route("/api/groups", methods=["GET"])
+def get_groups():
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT group_id, groupname FROM groups"
+        )
+        groups = cur.fetchall()
+        cur.close()
+
+        return jsonify({
+            "groups": [
+                {
+                    "group_id": group[0],
+                    "groupname": group[1]
+                }
+                for group in groups
+            ]
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn:
+            conn.close()
+            
+@app.route("/api/user/agents", methods=["GET"])
+def get_user_agents():
+    if "user_id" not in session:
+        return jsonify({"error": "Not authenticated"}), 401
+    if "group_id" not in session:
+        return jsonify({"error": "Not in a group"}), 401
+
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # Get group name for file path
+        cur.execute("SELECT groupname FROM groups WHERE group_id = %s", (session["group_id"],))
+        group_name = cur.fetchone()[0]
+        
+        # Get agents from database
+        cur.execute("""
+            SELECT agent_id, name, game, file_path, created_at 
+            FROM agents 
+            WHERE group_id = %s
+            ORDER BY created_at DESC
+        """, (session["group_id"],))
+        
+        agents = cur.fetchall()
+        cur.close()
+
+        return jsonify({
+            "agents": [
+                {
+                    "id": agent[0],
+                    "name": agent[1],
+                    "game": agent[2],
+                    "file_path": agent[3],
+                    "created_at": agent[4].isoformat() if agent[4] else None
+                }
+                for agent in agents
+            ]
+        })
+    except Exception as e:
+        print(f"Error fetching agents: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn:
+            conn.close()
+            
+@app.route("/api/admin/agents", methods=["GET"])
+def get_all_agents():
+    if "role" not in session or session["role"] != "admin":
+        return jsonify({"error": "Unauthorized"}), 401
+
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        cur.execute("""
+            SELECT a.agent_id, a.name, a.game, a.file_path, a.created_at, g.groupname
+            FROM agents a
+            JOIN groups g ON a.group_id = g.group_id
+            ORDER BY a.created_at DESC
+        """)
+        
+        agents = cur.fetchall()
+        cur.close()
+
+        return jsonify({
+            "agents": [
+                {
+                    "id": agent[0],
+                    "name": agent[1],
+                    "game": agent[2],
+                    "file_path": agent[3],
+                    "created_at": agent[4].isoformat() if agent[4] else None,
+                    "groupname": agent[5]
+                }
+                for agent in agents
+            ]
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn:
+            conn.close()
+            
 if __name__ == "__main__":
     app.run(debug=True)

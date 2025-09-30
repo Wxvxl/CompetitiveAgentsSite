@@ -28,7 +28,7 @@ export default function UserGroupManagement() {
 
   async function fetchUsers() {
     try {
-      const res = await fetch("http://localhost:5000/api/users", {
+      const res = await fetch("http://localhost:5001/api/users", {
         credentials: "include",
       });
       const data = await res.json();
@@ -40,7 +40,7 @@ export default function UserGroupManagement() {
 
   async function fetchGroups() {
     try {
-      const res = await fetch("http://localhost:5000/api/groups", {
+      const res = await fetch("http://localhost:5001/api/groups", {
         credentials: "include",
       });
       const data = await res.json();
@@ -53,7 +53,7 @@ export default function UserGroupManagement() {
   async function handleAssignGroup(userId: number, groupId: string) {
     setLoading(true);
     try {
-      const res = await fetch("http://localhost:5000/api/admin/assign-group", {
+      const res = await fetch("http://localhost:5001/api/admin/assign-group", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",

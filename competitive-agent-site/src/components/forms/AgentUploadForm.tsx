@@ -10,7 +10,7 @@ export type AgentUploadFormProps = {
 };
 
 export default function AgentUploadForm({
-  endpoint = "http://localhost:5000/agents/upload",
+  endpoint = "http://localhost:5001/agents/upload",
   onUploaded,
   maxSize = 20,
   game = "conn4",

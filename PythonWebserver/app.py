@@ -186,7 +186,10 @@ def run_group_vs_group(group1, group2, game):
 
 # agents win rate for leaderboard
 def fetch_latest_agents_for_game(game: str):
-    """Return the latest agent for every group for the specified game."""
+    """
+    Return the latest agent for every group for the specified game.
+    Uses DISTINCT ON to get the latest agent per group based on created_at timestamp.
+    """
     conn = None
     cur = None
     try:
@@ -542,49 +545,6 @@ def list_groups():
             conn.close()
 
 
-@app.route("/api/create_group", methods=["POST"])
-def create_group():
-    if "user_id" not in session:
-        return jsonify({"error": "Not authenticated"}), 401
-    data = request.json or {}
-    groupname = data.get("groupname")
-
-    if not groupname:
-        return jsonify({"error": "Group name required"}), 400
-
-    conn = None
-    cur = None
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute(
-            "INSERT INTO groups (groupname) VALUES (%s) RETURNING group_id;",
-            (groupname,)
-        )
-        group_id = cur.fetchone()[0]
-        conn.commit()
-        return jsonify({
-            "message": "Group created successfully",
-            "group": {
-                "id": group_id,
-                "name": groupname,
-            },
-        })
-    except errors.UniqueViolation:
-        if conn:
-            conn.rollback()
-        return jsonify({"error": "Group name already exists"}), 400
-    except Exception as e:
-        if conn:
-            conn.rollback()
-        return jsonify({"error": str(e)}), 500
-    finally:
-        if cur:
-            cur.close()
-        if conn:
-            conn.close()
-
-
 @app.route("/api/users", methods=["GET"])
 def list_users():
     auth_error = require_admin()
@@ -884,8 +844,6 @@ def me():
 
 @app.route("/api/login", methods=["POST"])
 def login():
-<<<<<<< HEAD
-=======
     """
     Authenticate user and create session.
     
@@ -908,7 +866,6 @@ def login():
         400: {"error": "Missing fields"}
         401: {"error": "Invalid credentials"}
     """
->>>>>>> origin/main
     data = request.json 
     email = data.get("email")
     password = data.get("password")
@@ -994,11 +951,6 @@ def get_users():
     finally:
         if conn:
             conn.close()
-<<<<<<< HEAD
-
-@app.route("/api/user/agents", methods=["GET"])
-def get_user_agents():
-=======
             
 @app.route("/api/groups", methods=["GET"])
 def get_groups():
@@ -1063,7 +1015,6 @@ def get_user_agents():
         }
         401: {"error": "Not authenticated"} or {"error": "Not in a group"}
     """
->>>>>>> origin/main
     if "user_id" not in session:
         return jsonify({"error": "Not authenticated"}), 401
     if "group_id" not in session:
@@ -1110,8 +1061,6 @@ def get_user_agents():
             
 @app.route("/api/admin/agents", methods=["GET"])
 def get_all_agents():
-<<<<<<< HEAD
-=======
     """
     Get list of all agents across all groups. Admin only endpoint.
     
@@ -1133,7 +1082,6 @@ def get_all_agents():
         }
         401: {"error": "Unauthorized"}
     """
->>>>>>> origin/main
     if "role" not in session or session["role"] != "admin":
         return jsonify({"error": "Unauthorized"}), 401
 

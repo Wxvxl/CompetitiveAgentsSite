@@ -48,7 +48,7 @@ assert "group2" in group_names, "group2 should be in groups"
 
 
 users = [
-    ("user1", "user1@example.com", "password1", "admin", group1_id),
+    ("user1", "user1@example.com", "password1", "student", group1_id),
     ("user2", "user2@example.com", "password2", "student", group1_id),
     ("user3", "user3@example.com", "password3", "student", group2_id),
     ("user4", "user4@example.com", "password4", "student", group2_id),

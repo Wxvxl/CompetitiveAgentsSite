@@ -31,10 +31,20 @@ Docker-compose and Dockerfile is already provided in the PythonWebserver folder,
 docker compose up --build
 ```
 
-### 3. Database Setup
+### 4. Database Setup
 
 There is a Python script that will setup the necessary table. Note that this also **delete all the data** in the table and should only be used for **testing** purposes or initial **setup**!
 
 ```bash
 docker compose exec app python dbSetup.py
 ```
+
+### 5. Testing the App
+After running `dbSetup.py` it will create the database with all of the table, but however all of the table is empty! There is a Python script for testing all of the available endpoints in the app while also testing the integrity and function of the database: `appTesting.py` By running appTesting.py in the docker container:
+
+```bash
+docker compose exec app python appTesting.py
+```
+
+## Games Specification
+# TODO: Write documentation on the details of the games API and how the games will 

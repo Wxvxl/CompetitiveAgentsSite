@@ -52,8 +52,20 @@ def require_admin():
         return jsonify({"error": "Admin access required"}), 403
     return None
     
-# Fetch an agent from a group for a specific game
 def fetch_agents(groupname, game):
+    """
+    Fetch the list of all agents in the database for a specific group and game.
+    
+    Args :
+        groupname (str)
+        game (str) : ID of the game, this must be one of the valid games in the games dict defined above
+
+    Raises :
+        # TODO: Write error checking code for this function
+        
+    Returns:
+        List : List that each contain a dictionary that has three keys: agent_id, name, and file_path for each agent.
+    """
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute("""
@@ -68,8 +80,20 @@ def fetch_agents(groupname, game):
     conn.close()
     return [{"agent_id": row[0], "name": row[1], "file_path": row[2]} for row in agents]
 
-# newly added funtion to fetch the latest data:
 def fetch_latest_agent(groupname, game):
+    """
+    Fetch only the latest agents from the specified group for a specific game.
+    
+    Args:
+        groupname (str)
+        game (str) : ID of the game, this must be one of the valid games in the games dict defined above
+        
+    Raises:
+        #TODO: Write error checking code for this function.
+    
+    Returns:
+       Dict : Return a single dictionary that contains the agent_id, name, and file_path information 
+    """
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("""           
@@ -90,7 +114,18 @@ def fetch_latest_agent(groupname, game):
 
 
 def load_class_from_file(filepath, class_name):
-    """Dynamically load a class from a file."""
+    """
+    Dynamically load a class from a file.
+    
+    Args: 
+        filepath (str): This must be the absolute/relative path of the Python file containing the class.
+        class_name (str): The name of the class to get. Agents have a defined classname in the games dictionary above.
+    
+    Raises:
+        TODO: Write extra testing code, what if the file isn't there?
+    Return: 
+        Class : Fetches the class object from the file that we can use and call. This is going to be used mainly for playing the games.
+    """
     module_name = os.path.splitext(os.path.basename(filepath))[0]
     spec = importlib.util.spec_from_file_location(module_name, filepath)
     module = importlib.util.module_from_spec(spec)
@@ -98,6 +133,21 @@ def load_class_from_file(filepath, class_name):
     return getattr(module, class_name)
 
 def run_tests_on_group(groupname, game):
+    """
+    Run test games for a specific group and for a specific game. 
+    This will run matches between the latest uploaded agent for the agent and all of the provided testing agents as listed in the games dictionary.
+
+    Args:
+        groupname (str)
+        game (str): ID of the game, this must be one of the valid games in the games dict defined above
+
+    Raises:
+        # TODO: Check if the group exist or not. Need further error checking.
+        ValueError: Game is not found in the configuration
+
+    Returns:
+        Dictionary : Returns a dictionary that contains the results of all of the matches.
+    """
     if game not in games:
         raise ValueError(f"Game '{game}' not found in configuration.")
     game_info = games[game]
@@ -142,6 +192,20 @@ def run_tests_on_group(groupname, game):
 
 
 def run_group_vs_group(group1, group2, game):
+    """
+    Run a single match between two groups for a provided game.
+
+    Args:
+        group1 (str) : Groupname of the first group.
+        group2 (str) : Groupname of the second group.
+        game (str): One of the valid game ID in the games dictionary.
+
+    Raises:
+        ValueError: The game is not found in the games dictionary and is not a valid game.
+
+    Returns:
+        dictionary : Returns a dictionary with the result of the game.
+    """
     if game not in games:
         raise ValueError(f"Game '{game}' not found in configuration.")
     game_info = games[game]
@@ -174,7 +238,6 @@ def run_group_vs_group(group1, group2, game):
         winner_agent = agent2["name"]
     else:
         winner_agent = "Draw"
-
 
     results = {
         "group1": {"name": group1, "agent": agent1["name"]},
@@ -743,11 +806,22 @@ def register():
         
 @app.route("/api/logout", methods=["POST"])
 def logout():
+    """Simple function that just clears the session of the user, therefore effectively logging them
+
+    Returns:
+        json : Message that the user has been successfully logged out.
+    """
     session.clear()
     return jsonify({"message": "Logged out"})
 
 @app.route("/api/create_group", methods=["POST"])
 def create_group():
+    """Function that will create a new group in the database
+
+    Returns:
+        JSON : Message that the group was created successfully, with the second item being the groups object containing the group data (ID and name)
+    """
+    # TODO: Add feature to add the user to the newly created group.
     if "user_id" not in session:
         return jsonify({"error": "Not authenticated"}), 401
     data = request.json
@@ -920,6 +994,11 @@ def login():
             
 @app.route("/api/users", methods=["GET"])
 def get_users():
+    """Get the list of all registered users.
+
+    Returns:
+        JSON : Contains a users object that has a list of all of the registered users, containing the information such as ID, username, email, role and grouping
+    """
     # Check admin authorization
     if "role" not in session or session["role"] != "admin":
         return jsonify({"error": "Unauthorized"}), 401
@@ -1120,4 +1199,4 @@ def get_all_agents():
             conn.close()
             
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=True, port=5001)

@@ -333,6 +333,28 @@ def run_round_robin_endpoint(game):
 
 @app.route("/api/admin/assign-group", methods=["POST"])
 def assign_group():
+    """
+    Assign a user to a group. Admin only endpoint.
+    
+    Request Body:
+        {
+            "user_id": int,
+            "group_id": int | null
+        }
+    
+    Returns:
+        200: {
+            "user": {
+                "id": int,
+                "username": string,
+                "email": string,
+                "role": string,
+                "group_id": int | null
+            }
+        }
+        401: {"error": "Unauthorized"}
+        404: {"error": "User not found"}
+    """
     # Check admin authorization
     if "role" not in session or session["role"] != "admin":
         return jsonify({"error": "Unauthorized"}), 401
@@ -382,6 +404,32 @@ def assign_group():
 
 @app.route("/agents/upload/<game>", methods=["POST"])
 def upload_agent(game):
+    """
+    Upload an agent file for a specific game.
+    
+    Parameters:
+        game: string - Game type (conn4, tictactoe)
+    
+    Request:
+        multipart/form-data with file field
+        File must be .py extension
+    
+    Requires:
+        User must be authenticated and assigned to a group
+    
+    Returns:
+        200: {
+            "message": "File uploaded successfully",
+            "agent": {
+                "id": int,
+                "group_id": int,
+                "file_path": string,
+                "game": string
+            }
+        }
+        400: {"error": "No file part"} or {"error": "Only .py files allowed"}
+        401: {"error": "Not authenticated"} or {"error": "Not in a group"}
+    """
     # Error Checking
     if "user_id" not in session:
         return {"error": "Not authenticated"}, 401
@@ -658,6 +706,29 @@ def assign_user_group(user_id):
 
 @app.route("/api/register", methods=["POST"])
 def register():
+    """
+    Register a new user.
+    
+    Request Body:
+        {
+            "username": string,
+            "email": string,
+            "password": string,
+            "role": string (optional, defaults to "student")
+        }
+    
+    Returns:
+        201: {
+            "user": {
+                "id": int,
+                "username": string,
+                "email": string,
+                "role": string
+            }
+        }
+        400: {"error": "Missing fields"} or {"error": "Username or Email already exists"}
+        500: {"error": error message}
+    """   
     data = request.json
     username = data.get("username")
     email = data.get("email")
@@ -715,8 +786,72 @@ def logout():
     session.clear()
     return jsonify({"message": "Logged out"})
 
+@app.route("/api/create_group", methods=["POST"])
+def create_group():
+    if "user_id" not in session:
+        return jsonify({"error": "Not authenticated"}), 401
+    data = request.json
+    groupname = data.get("groupname")
+    
+    if not groupname:
+        return jsonify({"error": "Group name required"}), 400
+    
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO groups (groupname) VALUES (%s) RETURNING group_id;",
+            (groupname,)
+        )
+        
+        group_id = cur.fetchone()[0]
+        conn.commit()
+        cur.close()
+        
+        return jsonify({
+            "message":"Group created successfully",
+            "group": {
+                "id": group_id,
+                "name": groupname
+            }
+        })
+        
+    except errors.UniqueViolation:
+        if conn:
+            conn.rollback()
+        return jsonify({"error": "Group name already exists"}), 400
+    
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    
+    finally:
+        if conn:
+            conn.close()
+    
+
 @app.route("/api/me", methods=["GET"])
 def me():
+    """
+    Get current authenticated user's data.
+    
+    Requires:
+        User must be authenticated (valid session)
+    
+    Returns:
+        200: {
+            "user": {
+                "id": int,
+                "username": string,
+                "email": string,
+                "role": string,
+                "group_id": int | null
+            }
+        }
+        401: {"error": "Not authenticated"}
+        404: {"error": "User not found"}
+    """
     if "user_id" not in session:
         return jsonify({"error": "Not authenticated"}), 401
     
@@ -749,6 +884,31 @@ def me():
 
 @app.route("/api/login", methods=["POST"])
 def login():
+<<<<<<< HEAD
+=======
+    """
+    Authenticate user and create session.
+    
+    Request Body:
+        {
+            "email": string,
+            "password": string
+        }
+    
+    Returns:
+        200: {
+            "user": {
+                "id": int,
+                "username": string,
+                "email": string,
+                "role": string,
+                "group_id": int | null
+            }
+        }
+        400: {"error": "Missing fields"}
+        401: {"error": "Invalid credentials"}
+    """
+>>>>>>> origin/main
     data = request.json 
     email = data.get("email")
     password = data.get("password")
@@ -834,9 +994,76 @@ def get_users():
     finally:
         if conn:
             conn.close()
+<<<<<<< HEAD
 
 @app.route("/api/user/agents", methods=["GET"])
 def get_user_agents():
+=======
+            
+@app.route("/api/groups", methods=["GET"])
+def get_groups():
+    """
+    Get list of all available groups.
+    
+    Returns:
+        200: {
+            "groups": [
+                {
+                    "group_id": int,
+                    "groupname": string
+                }
+            ]
+        }
+        500: {"error": error message}
+    """
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT group_id, groupname FROM groups"
+        )
+        groups = cur.fetchall()
+        cur.close()
+
+        return jsonify({
+            "groups": [
+                {
+                    "group_id": group[0],
+                    "groupname": group[1]
+                }
+                for group in groups
+            ]
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn:
+            conn.close()
+            
+@app.route("/api/user/agents", methods=["GET"])
+def get_user_agents():
+    """
+    Get list of agents uploaded by user's group.
+    
+    Requires:
+        User must be authenticated and assigned to a group
+    
+    Returns:
+        200: {
+            "agents": [
+                {
+                    "id": int,
+                    "name": string,
+                    "game": string,
+                    "file_path": string,
+                    "created_at": string (ISO format)
+                }
+            ]
+        }
+        401: {"error": "Not authenticated"} or {"error": "Not in a group"}
+    """
+>>>>>>> origin/main
     if "user_id" not in session:
         return jsonify({"error": "Not authenticated"}), 401
     if "group_id" not in session:
@@ -883,6 +1110,30 @@ def get_user_agents():
             
 @app.route("/api/admin/agents", methods=["GET"])
 def get_all_agents():
+<<<<<<< HEAD
+=======
+    """
+    Get list of all agents across all groups. Admin only endpoint.
+    
+    Requires:
+        User must be authenticated and have admin role
+    
+    Returns:
+        200: {
+            "agents": [
+                {
+                    "id": int,
+                    "name": string,
+                    "game": string,
+                    "file_path": string,
+                    "created_at": string (ISO format),
+                    "groupname": string
+                }
+            ]
+        }
+        401: {"error": "Unauthorized"}
+    """
+>>>>>>> origin/main
     if "role" not in session or session["role"] != "admin":
         return jsonify({"error": "Unauthorized"}), 401
 

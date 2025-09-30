@@ -29,7 +29,11 @@ export default function useAuth() {
 
   const logout = useCallback(async () => {
     try {
+<<<<<<< HEAD
       await fetch("http://localhost:5001/api/logout", {
+=======
+      await fetch("http://localhost:5000/api/logout", {
+>>>>>>> origin/main
         method: "POST",
         credentials: "include",
       });

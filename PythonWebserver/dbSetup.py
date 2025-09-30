@@ -1,6 +1,7 @@
 import psycopg2
 import os
 
+DB_URL = os.getenv("DATABASE_URL")
 user_name = os.getenv("POSTGRES_USER", "postgres")
 password = os.getenv("POSTGRES_PASSWORD", "admin")
 host = "db"

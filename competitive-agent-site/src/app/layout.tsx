@@ -1,4 +1,5 @@
 import "./globals.css";
+import Header from "../components/layout/Header";
 
 export default function RootLayout({
   children,
@@ -8,9 +9,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <header>
-          <h1>Competitive Agents Dashboard</h1>
-        </header>
+        <Header />
         <main>{children}</main>
       </body>
     </html>

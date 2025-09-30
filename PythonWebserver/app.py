@@ -5,12 +5,15 @@ import psycopg2
 from psycopg2 import errors
 import bcrypt
 import os
+from itertools import combinations
+from collections import defaultdict
+
 
 app = Flask(__name__)
 CORS(app, origins=["http://localhost:3000", "http://100.112.255.106:3000"], supports_credentials=True)
 app.secret_key = os.getenv("SECRET_KEY", "your-secret-key")  # Use a strong secret in production
 
-DB_URL = os.getenv("DATABASE_URL", "postgresql://postgres:Zyx210915.@localhost:5432/test") #Use your own link here
+DB_URL = os.getenv("DATABASE_URL") # Setup the DB url in a .env
 
 games = {
     "conn4": {
@@ -21,7 +24,7 @@ games = {
         ],
         "agent": "C4Agent" # The agent name for every student.
     },
-    "TTT": {
+    "tictactoe": {
        "module" : "games.tictactoe.game",
        "tests": [
            ("firstavail.py", "FirstAvailableAgent"),
@@ -84,8 +87,6 @@ def fetch_latest_agent(groupname, game):
     if row:
         return {"agent_id": row[0], "name": row[1], "file_path": row[2]}
     return None
-
-
 
 
 def load_class_from_file(filepath, class_name):
@@ -183,6 +184,202 @@ def run_group_vs_group(group1, group2, game):
 
     return results
 
+# agents win rate for leaderboard
+def fetch_latest_agents_for_game(game: str):
+    """Return the latest agent for every group for the specified game."""
+    conn = None
+    cur = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT DISTINCT ON (g.group_id)
+                   a.agent_id,
+                   a.name,
+                   a.file_path,
+                   g.groupname,
+                   g.group_id
+            FROM agents a
+            JOIN groups g ON g.group_id = a.group_id
+            WHERE a.game = %s
+            ORDER BY g.group_id, a.created_at DESC, a.agent_id DESC;
+            """,
+            (game,),
+        )
+        rows = cur.fetchall()
+        return [
+            {
+                "agent_id": row[0],
+                "name": row[1],
+                "file_path": row[2],
+                "group": row[3],
+                "group_id": row[4],
+            }
+            for row in rows
+        ]
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
+def play_single_match(game_class, first_agent_cls, second_agent_cls):
+    """Run a single match and return winner symbol: 'X', 'O', or 'Draw'."""
+    game_instance = game_class(first_agent_cls(), second_agent_cls())
+    return game_instance.play()
+
+
+def run_round_robin_tournament(game: str):
+    """
+    Run a double tournament (each pair plays twice, swapping order)
+    and return aggregated results
+    """
+    if game not in games:
+        raise ValueError(f"Game '{game}' not found in configuration.")
+
+    participants = fetch_latest_agents_for_game(game)
+    if len(participants) < 2:
+        raise ValueError("Need at least two agents to run a tournament.")
+
+    game_info = games[game]
+    game_module = __import__(game_info["module"], fromlist=["Game"])
+    GameClass = getattr(game_module, "Game")
+    agent_class_name = game_info["agent"]
+
+    for participant in participants:
+        participant["cls"] = load_class_from_file(participant["file_path"], agent_class_name)
+
+    stats = defaultdict(lambda: {"wins": 0, "losses": 0, "draws": 0, "games": 0})
+    matches = []
+
+    for agent_a, agent_b in combinations(participants, 2):
+        ordered_pairs = [(agent_a, agent_b), (agent_b, agent_a)]
+        for first, second in ordered_pairs:
+            winner = play_single_match(GameClass, first["cls"], second["cls"])
+
+            stats[first["group"]]["games"] += 1
+            stats[second["group"]]["games"] += 1
+
+            if winner == "X":
+                stats[first["group"]]["wins"] += 1
+                stats[second["group"]]["losses"] += 1
+                winner_group = first["group"]
+                winner_agent = first["name"]
+            elif winner == "O":
+                stats[second["group"]]["wins"] += 1
+                stats[first["group"]]["losses"] += 1
+                winner_group = second["group"]
+                winner_agent = second["name"]
+            else:
+                stats[first["group"]]["draws"] += 1
+                stats[second["group"]]["draws"] += 1
+                winner_group = None
+                winner_agent = None
+
+            matches.append(
+                {
+                    "first_group": first["group"],
+                    "first_agent": first["name"],
+                    "second_group": second["group"],
+                    "second_agent": second["name"],
+                    "winner_symbol": winner,
+                    "winner_group": winner_group,
+                    "winner_agent": winner_agent,
+                }
+            )
+
+    summary = []
+    for group, data in stats.items():
+        games_played = data["games"]
+        win_rate = data["wins"] / games_played if games_played else 0.0
+        summary.append(
+            {
+                "group": group,
+                "wins": data["wins"],
+                "losses": data["losses"],
+                "draws": data["draws"],
+                "games": games_played,
+                "win_rate": win_rate,
+            }
+        )
+
+    summary.sort(key=lambda item: (-item["win_rate"], -item["wins"], item["losses"]))
+
+    return {
+        "summary": summary,
+        "matches": matches,
+        "total_matches": len(matches),
+    }
+
+
+@app.route("/api/admin/tournaments/<game>/round_robin", methods=["POST"])
+def run_round_robin_endpoint(game):
+    auth_error = require_admin()
+    if auth_error:
+        return auth_error
+
+    try:
+        results = run_round_robin_tournament(game)
+        return jsonify({"game": game, **results})
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/admin/assign-group", methods=["POST"])
+def assign_group():
+    # Check admin authorization
+    if "role" not in session or session["role"] != "admin":
+        return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.json
+    user_id = data.get("user_id")
+    group_id = data.get("group_id")
+
+    if not user_id or group_id is None:
+        return jsonify({"error": "Missing fields"}), 400
+
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        # Update user's group
+        cur.execute(
+            "UPDATE users SET group_id = %s WHERE user_id = %s RETURNING user_id, username, email, role, group_id",
+            (group_id, user_id)
+        )
+        
+        updated_user = cur.fetchone()
+        conn.commit()
+        cur.close()
+
+        if not updated_user:
+            return jsonify({"error": "User not found"}), 404
+
+        return jsonify({
+            "user": {
+                "id": updated_user[0],
+                "username": updated_user[1],
+                "email": updated_user[2],
+                "role": updated_user[3],
+                "group_id": updated_user[4]
+            }
+        })
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn:
+            conn.close()
+
 @app.route("/agents/upload/<game>", methods=["POST"])
 def upload_agent(game):
     # Error Checking
@@ -214,7 +411,7 @@ def upload_agent(game):
         
         cur.execute(
             """
-            INSERT INTO agents (group_id, name, game, filename)
+            INSERT INTO agents (group_id, name, game, file_path)
             VALUES (%s, %s, %s, %s)
             RETURNING agent_id;
             """,
@@ -231,7 +428,7 @@ def upload_agent(game):
             "agent": {
                 "id": agent_id,
                 "group_id" : session["group_id"],
-                "filename": file.filename,
+                "file_path": file.filename,
                 "game": game
             }
         })
@@ -297,16 +494,15 @@ def list_groups():
             conn.close()
 
 
-@app.route("/api/groups", methods=["POST"])
+@app.route("/api/create_group", methods=["POST"])
 def create_group():
-    auth_error = require_admin()
-    if auth_error:
-        return auth_error
-
+    if "user_id" not in session:
+        return jsonify({"error": "Not authenticated"}), 401
     data = request.json or {}
-    name = data.get("name") or data.get("groupname")
-    if not name:
-        return jsonify({"error": "Group name is required"}), 400
+    groupname = data.get("groupname")
+
+    if not groupname:
+        return jsonify({"error": "Group name required"}), 400
 
     conn = None
     cur = None
@@ -314,12 +510,18 @@ def create_group():
         conn = get_db_connection()
         cur = conn.cursor()
         cur.execute(
-            "INSERT INTO groups (groupname) VALUES (%s) RETURNING group_id, groupname;",
-            (name.strip(),)
+            "INSERT INTO groups (groupname) VALUES (%s) RETURNING group_id;",
+            (groupname,)
         )
-        group_id, groupname = cur.fetchone()
+        group_id = cur.fetchone()[0]
         conn.commit()
-        return jsonify({"group": {"id": group_id, "name": groupname}}), 201
+        return jsonify({
+            "message": "Group created successfully",
+            "group": {
+                "id": group_id,
+                "name": groupname,
+            },
+        })
     except errors.UniqueViolation:
         if conn:
             conn.rollback()
@@ -492,7 +694,7 @@ def register():
                 "email": email,
                 "role": role,
             }
-        })
+        }), 201
         
     except errors.UniqueViolation:
         if conn:
@@ -547,7 +749,7 @@ def me():
 
 @app.route("/api/login", methods=["POST"])
 def login():
-    data = request.json
+    data = request.json 
     email = data.get("email")
     password = data.get("password")
 
@@ -598,6 +800,125 @@ def login():
     finally:
         if conn:
             conn.close()
-    
+            
+@app.route("/api/users", methods=["GET"])
+def get_users():
+    # Check admin authorization
+    if "role" not in session or session["role"] != "admin":
+        return jsonify({"error": "Unauthorized"}), 401
+
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT user_id, username, email, role, group_id FROM users"
+        )
+        users = cur.fetchall()
+        cur.close()
+
+        return jsonify({
+            "users": [
+                {
+                    "id": user[0],
+                    "username": user[1],
+                    "email": user[2],
+                    "role": user[3],
+                    "group_id": user[4]
+                }
+                for user in users
+            ]
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn:
+            conn.close()
+
+@app.route("/api/user/agents", methods=["GET"])
+def get_user_agents():
+    if "user_id" not in session:
+        return jsonify({"error": "Not authenticated"}), 401
+    if "group_id" not in session:
+        return jsonify({"error": "Not in a group"}), 401
+
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # Get group name for file path
+        cur.execute("SELECT groupname FROM groups WHERE group_id = %s", (session["group_id"],))
+        group_name = cur.fetchone()[0]
+        
+        # Get agents from database
+        cur.execute("""
+            SELECT agent_id, name, game, file_path, created_at 
+            FROM agents 
+            WHERE group_id = %s
+            ORDER BY created_at DESC
+        """, (session["group_id"],))
+        
+        agents = cur.fetchall()
+        cur.close()
+
+        return jsonify({
+            "agents": [
+                {
+                    "id": agent[0],
+                    "name": agent[1],
+                    "game": agent[2],
+                    "file_path": agent[3],
+                    "created_at": agent[4].isoformat() if agent[4] else None
+                }
+                for agent in agents
+            ]
+        })
+    except Exception as e:
+        print(f"Error fetching agents: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn:
+            conn.close()
+            
+@app.route("/api/admin/agents", methods=["GET"])
+def get_all_agents():
+    if "role" not in session or session["role"] != "admin":
+        return jsonify({"error": "Unauthorized"}), 401
+
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        cur.execute("""
+            SELECT a.agent_id, a.name, a.game, a.file_path, a.created_at, g.groupname
+            FROM agents a
+            JOIN groups g ON a.group_id = g.group_id
+            ORDER BY a.created_at DESC
+        """)
+        
+        agents = cur.fetchall()
+        cur.close()
+
+        return jsonify({
+            "agents": [
+                {
+                    "id": agent[0],
+                    "name": agent[1],
+                    "game": agent[2],
+                    "file_path": agent[3],
+                    "created_at": agent[4].isoformat() if agent[4] else None,
+                    "groupname": agent[5]
+                }
+                for agent in agents
+            ]
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn:
+            conn.close()
+            
 if __name__ == "__main__":
     app.run(debug=True)

@@ -27,7 +27,7 @@ services:
       db:
         condition: service_healthy
     command: >
-      sh -c "python dbTesting.py && python appTesting.py &&  flask run --host=0.0.0.0"
+      sh -c "python dbSetup.py && python appTesting.py &&  flask run --host=0.0.0.0"
     volumes:
       - .:/app
 

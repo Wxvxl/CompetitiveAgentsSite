@@ -1,13 +1,27 @@
 "use client";
-import AgentUpload from "./agents";
-import GroupManagement from "./group-management";
+import RoleGuard from "../../components/auth/RoleGuard";
+import AgentList from "../../components/agents/AgentList";
+import UserGroupManagement from "../../components/admin/UserGroupManagement";
+import RoundRobinPanel from "@/components/win_rate/round";
 
 export default function AdminPage() {
   return (
-    <section>
-      <h2>Admin Panel</h2>
-      <AgentUpload game="conn4" />
-      <GroupManagement />
-    </section>
+    <RoleGuard allow="admin" fallback={<div>Access denied.</div>}>
+      <section>
+        <h2>Admin Panel</h2>
+        <div className="mb-8">
+          <h3>User Group Management</h3>
+          <UserGroupManagement />
+        </div>
+        <div>
+          <h3>All Uploaded Agents</h3>
+          <AgentList scope="all" />
+        </div>
+        <div>
+          <h3>Round Robin Tournament</h3>
+          <RoundRobinPanel />
+        </div>
+      </section>
+    </RoleGuard>
   );
 }

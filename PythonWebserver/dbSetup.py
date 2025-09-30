@@ -1,6 +1,7 @@
 import psycopg2
 import os
 
+DB_URL = os.getenv("DATABASE_URL")
 user_name = os.getenv("POSTGRES_USER", "postgres")
 password = os.getenv("POSTGRES_PASSWORD", "admin")
 host = "db"
@@ -15,6 +16,7 @@ conn = psycopg2.connect(
     host=host,
     port=port
 )
+
 conn.autocommit = True
 cur = conn.cursor()
 
@@ -28,8 +30,6 @@ cur.execute(f"CREATE DATABASE {db_name}")
 # After creating database, close the first connection properly
 cur.close()
 conn.close()
-
-#conn = psycopg2.connect(DB_URL)
 
 # Step 2: connect directly to 'test' and build schema
 conn = psycopg2.connect(
@@ -96,4 +96,4 @@ conn.commit()
 cur.close()
 conn.close()
 
-print("✅ Database setup complete.")
+print("Database setup complete.")

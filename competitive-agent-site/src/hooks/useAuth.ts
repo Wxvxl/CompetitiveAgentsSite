@@ -15,7 +15,7 @@ export default function useAuth() {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("http://localhost:5000/api/me", {
+      const res = await fetch("http://localhost:5001/api/me", {
         credentials: "include",
       });
       const data = await res.json();
@@ -29,7 +29,7 @@ export default function useAuth() {
 
   const logout = useCallback(async () => {
     try {
-      await fetch("http://localhost:5000/api/logout", {
+      await fetch("http://localhost:5001/api/logout", {
         method: "POST",
         credentials: "include",
       });

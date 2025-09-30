@@ -26,8 +26,8 @@ export default function AgentList({ scope }: AgentListProps) {
       try {
         const endpoint =
           scope === "all"
-            ? "http://localhost:5000/api/admin/agents"
-            : "http://localhost:5000/api/user/agents";
+            ? "http://localhost:5001/api/admin/agents"
+            : "http://localhost:5001/api/user/agents";
         const res = await fetch(endpoint, { credentials: "include" });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error);

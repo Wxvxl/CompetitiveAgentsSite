@@ -5,6 +5,8 @@ import psycopg2
 from psycopg2 import errors
 import bcrypt
 import os
+import json
+from decimal import Decimal
 
 app = Flask(__name__)
 CORS(app, origins=["http://localhost:3000", "http://100.112.255.106:3000"], supports_credentials=True)
@@ -94,6 +96,283 @@ def fetch_latest_agent(groupname, game):
         return {"agent_id": row[0], "name": row[1], "file_path": row[2]}
     return None
 
+# ------ Tournament Functions Below ------ #    
+
+def fetch_latest_agents_for_game(cur, game):
+    """
+    Fetch the latest agent for each group for a given game.
+    returns a list of dictionaries with keys: agent_id, group_id, groupname, agent_name, file_path
+    """
+    cur.execute(
+        """
+        SELECT DISTINCT ON (g.group_id)
+            a.agent_id,
+            a.group_id,
+            g.groupname,
+            a.name,
+            a.file_path
+        FROM agents a
+        JOIN groups g ON a.group_id = g.group_id
+        WHERE a.game = %s
+        ORDER BY g.group_id, a.created_at DESC;
+        """,
+        (game,)
+    )
+    rows = cur.fetchall()
+    return [
+        {
+            "agent_id": row[0],
+            "group_id": row[1],
+            "groupname": row[2],
+            "agent_name": row[3],
+            "file_path": row[4],
+        }
+        for row in rows
+    ]
+
+
+def resolve_agent_path(game, groupname, file_path):
+    """
+
+    returns the absolute path if it exists, otherwise constructs a path based on the group and game structure.
+    """
+    if not file_path:
+        return file_path
+    if os.path.isabs(file_path) and os.path.exists(file_path):
+        return file_path
+    candidate = os.path.join(
+        os.getcwd(),
+        "games",
+        game,
+        "agents",
+        "students",
+        groupname,
+        file_path,
+    )
+    if os.path.exists(candidate):
+        return candidate
+    return file_path
+
+
+def play_agents_match(agent1_info, agent2_info, game):
+    """
+    Run a match between two agent entries and return the result summary.
+    returns a dictionary with keys:
+    """
+    if game not in games:
+        raise ValueError(f"Game '{game}' not found in configuration.")
+    game_info = games[game]
+    game_module = __import__(game_info["module"], fromlist=["Game"])
+    GameClass = getattr(game_module, "Game")
+
+    agent_class_name = game_info["agent"]
+
+    agent1_path = resolve_agent_path(game, agent1_info["groupname"], agent1_info["file_path"])
+    agent2_path = resolve_agent_path(game, agent2_info["groupname"], agent2_info["file_path"])
+
+    Agent1Class = load_class_from_file(agent1_path, agent_class_name)
+    Agent2Class = load_class_from_file(agent2_path, agent_class_name)
+
+    game_instance = GameClass(Agent1Class(), Agent2Class())
+    winner = game_instance.play()
+
+    if winner == "X":
+        winner_agent_id = agent1_info["agent_id"]
+        agent1_score = Decimal("1")
+        agent2_score = Decimal("0")
+        result = "agent1"
+        winner_label = agent1_info["agent_name"]
+    elif winner == "O":
+        winner_agent_id = agent2_info["agent_id"]
+        agent1_score = Decimal("0")
+        agent2_score = Decimal("1")
+        result = "agent2"
+        winner_label = agent2_info["agent_name"]
+    else:
+        winner_agent_id = None
+        agent1_score = Decimal("0.5")
+        agent2_score = Decimal("0.5")
+        result = "draw"
+        winner_label = "Draw"
+
+    return {
+        "winner_agent_id": winner_agent_id,
+        "agent1_score": agent1_score,
+        "agent2_score": agent2_score,
+        "result": result,
+        "winner_label": winner_label,
+        "raw_winner": winner,
+    }
+
+
+def initialize_tournament_standings(cur, tournament_id, agents):
+    """Insert initial standings rows and return an in-memory standings map."""
+    standings = {}
+    for agent in agents:
+        cur.execute(
+            """
+            INSERT INTO tournament_standings (tournament_id, agent_id, points, buchholz, rounds_played)
+            VALUES (%s, %s, 0, 0, 0)
+            ON CONFLICT (tournament_id, agent_id)
+            DO UPDATE SET points = EXCLUDED.points, buchholz = EXCLUDED.buchholz, rounds_played = EXCLUDED.rounds_played;
+            """,
+            (tournament_id, agent["agent_id"]),
+        )
+        standings[agent["agent_id"]] = {
+            "agent_id": agent["agent_id"],
+            "group_id": agent["group_id"],
+            "groupname": agent["groupname"],
+            "agent_name": agent["agent_name"],
+            "file_path": agent["file_path"],
+            "points": Decimal("0"),
+            "opponents": set(),
+            "rounds_played": 0,
+            "got_bye": False,
+        }
+    return standings
+
+
+def swiss_pairings(standings):
+    """Generate Swiss-system pairings and optionally return a bye candidate."""
+    players = sorted(
+        standings.values(),
+        key=lambda entry: (-entry["points"], entry["groupname"]),
+    )
+    pairings = []
+    used = set()
+
+    for idx, player in enumerate(players):
+        pid = player["agent_id"]
+        if pid in used:
+            continue
+
+        opponent = None
+        for candidate in players[idx + 1 :]:
+            cid = candidate["agent_id"]
+            if cid in used or cid == pid:
+                continue
+            if cid not in player["opponents"]:
+                opponent = candidate
+                break
+
+        if opponent is None:
+            for candidate in players:
+                cid = candidate["agent_id"]
+                if cid in used or cid == pid:
+                    continue
+                if cid not in player["opponents"]:
+                    opponent = candidate
+                    break
+
+        if opponent is None:
+            for candidate in players:
+                cid = candidate["agent_id"]
+                if cid in used or cid == pid:
+                    continue
+                opponent = candidate
+                break
+
+        if opponent is None:
+            used.add(pid)
+            return pairings, pid
+
+        used.add(pid)
+        used.add(opponent["agent_id"])
+        pairings.append((pid, opponent["agent_id"]))
+
+    remaining = [p for p in players if p["agent_id"] not in used]
+    if remaining:
+        remaining.sort(key=lambda entry: (entry["got_bye"], -entry["points"]))
+        candidate = None
+        for entry in remaining:
+            if not entry["got_bye"]:
+                candidate = entry
+                break
+        if candidate is None:
+            candidate = remaining[0]
+        return pairings, candidate["agent_id"]
+
+    return pairings, None
+
+
+def update_standing(cur, standings, tournament_id, agent_id, points_increment, opponent_id=None):
+    """Update both in-memory standings and the persistent table. """
+    entry = standings[agent_id]
+    if isinstance(points_increment, Decimal):
+        increment = points_increment
+    else:
+        increment = Decimal(str(points_increment))
+    entry["points"] += increment
+    entry["rounds_played"] += 1
+    if opponent_id is not None:
+        entry["opponents"].add(opponent_id)
+    cur.execute(
+        """
+        UPDATE tournament_standings
+        SET points = points + %s,
+            rounds_played = rounds_played + 1,
+            last_updated = CURRENT_TIMESTAMP
+        WHERE tournament_id = %s AND agent_id = %s
+        """,
+        (increment, tournament_id, agent_id),
+    )
+
+
+def record_tournament_match(cur, tournament_id, round_id, round_number, agent1, agent2, match_result):
+    """Persist a tournament match outcome."""
+    metadata = {
+        "agent1": {
+            "group": agent1["groupname"],
+            "name": agent1["agent_name"],
+        },
+        "winner": match_result["winner_label"],
+        "raw_winner": match_result["raw_winner"],
+    }
+    agent2_id = None
+    agent2_score = Decimal("0")
+    if agent2 is not None:
+        metadata["agent2"] = {
+            "group": agent2["groupname"],
+            "name": agent2["agent_name"],
+        }
+        agent2_id = agent2["agent_id"]
+        agent2_score = match_result["agent2_score"]
+    else:
+        metadata["agent2"] = None
+
+    cur.execute(
+        """
+        INSERT INTO tournament_matches (
+            tournament_id,
+            round_id,
+            round_number,
+            agent1_id,
+            agent2_id,
+            agent1_score,
+            agent2_score,
+            result,
+            winner_agent_id,
+            metadata
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        RETURNING tournament_match_id
+        """,
+        (
+            tournament_id,
+            round_id,
+            round_number,
+            agent1["agent_id"],
+            agent2_id,
+            match_result["agent1_score"],
+            agent2_score,
+            match_result["result"],
+            match_result["winner_agent_id"],
+            json.dumps(metadata),
+        ),
+    )
+    return cur.fetchone()[0]
+
+# ------ Tournament Functions Above ------ #
 
 def load_class_from_file(filepath, class_name):
     """
@@ -265,8 +544,10 @@ def assign_group():
         return jsonify({"error": "Missing fields"}), 400
 
     conn = None
+    cur = None
     try:
         conn = get_db_connection()
+        conn.autocommit = False
         cur = conn.cursor()
 
         # Update user's group
@@ -887,6 +1168,323 @@ def get_all_agents():
     finally:
         if conn:
             conn.close()
-            
+
+
+@app.route("/api/admin/tournaments", methods=["POST"])
+def start_tournament():
+    if "role" not in session or session["role"] != "admin":
+        return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.json or {}
+    game = data.get("game")
+    if not game:
+        return jsonify({"error": "Game is required"}), 400
+
+    try:
+        rounds = int(data.get("rounds", 3))
+    except (TypeError, ValueError):
+        return jsonify({"error": "Rounds must be an integer"}), 400
+
+    if rounds <= 0:
+        return jsonify({"error": "Rounds must be greater than zero"}), 400
+
+    name = data.get("name") or f"{game.title()} Swiss Tournament"
+
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        agents = fetch_latest_agents_for_game(cur, game)
+        if len(agents) < 2:
+            return jsonify({"error": "At least two agents are required to start a tournament"}), 400
+
+        cur.execute(
+            """
+            INSERT INTO tournaments (name, game, rounds, status, created_by)
+            VALUES (%s, %s, %s, %s, %s)
+            RETURNING tournament_id
+            """,
+            (name, game, rounds, "running", session.get("user_id")),
+        )
+        tournament_id = cur.fetchone()[0]
+
+        standings = initialize_tournament_standings(cur, tournament_id, agents)
+
+        for round_number in range(1, rounds + 1):
+            pairings, bye_agent_id = swiss_pairings(standings)
+            if not pairings and bye_agent_id is None:
+                break
+
+            cur.execute(
+                """
+                INSERT INTO tournament_rounds (tournament_id, round_number)
+                VALUES (%s, %s)
+                RETURNING round_id
+                """,
+                (tournament_id, round_number),
+            )
+            round_id = cur.fetchone()[0]
+
+            if bye_agent_id is not None:
+                bye_agent = standings[bye_agent_id]
+                bye_agent["got_bye"] = True
+                bye_result = {
+                    "winner_agent_id": bye_agent_id,
+                    "agent1_score": Decimal("1"),
+                    "agent2_score": Decimal("0"),
+                    "result": "bye",
+                    "winner_label": bye_agent["agent_name"],
+                    "raw_winner": "BYE",
+                }
+                update_standing(cur, standings, tournament_id, bye_agent_id, bye_result["agent1_score"])
+                record_tournament_match(cur, tournament_id, round_id, round_number, bye_agent, None, bye_result)
+
+            for agent1_id, agent2_id in pairings:
+                agent1 = standings[agent1_id]
+                agent2 = standings[agent2_id]
+                match_result = play_agents_match(agent1, agent2, game)
+                update_standing(
+                    cur,
+                    standings,
+                    tournament_id,
+                    agent1_id,
+                    match_result["agent1_score"],
+                    opponent_id=agent2_id,
+                )
+                update_standing(
+                    cur,
+                    standings,
+                    tournament_id,
+                    agent2_id,
+                    match_result["agent2_score"],
+                    opponent_id=agent1_id,
+                )
+                record_tournament_match(cur, tournament_id, round_id, round_number, agent1, agent2, match_result)
+
+        cur.execute(
+            "UPDATE tournaments SET status = 'completed' WHERE tournament_id = %s",
+            (tournament_id,),
+        )
+        conn.commit()
+
+        return jsonify({"tournament_id": tournament_id}), 201
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
+@app.route("/api/admin/tournaments", methods=["GET"])
+def list_tournaments():
+    if "role" not in session or session["role"] != "admin":
+        return jsonify({"error": "Unauthorized"}), 401
+
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT tournament_id, name, game, rounds, status, created_at
+            FROM tournaments
+            ORDER BY created_at DESC
+            """
+        )
+        tournaments = []
+        for row in cur.fetchall():
+            tournament_id = row[0]
+            cur.execute(
+                "SELECT COUNT(*) FROM tournament_rounds WHERE tournament_id = %s",
+                (tournament_id,),
+            )
+            round_count = cur.fetchone()[0]
+            cur.execute(
+                """
+                SELECT ts.agent_id, ts.points, ts.rounds_played,
+                       COALESCE(g.groupname, 'Unknown') AS groupname,
+                       COALESCE(a.name, 'Unknown') AS agent_name
+                FROM tournament_standings ts
+                LEFT JOIN agents a ON ts.agent_id = a.agent_id
+                LEFT JOIN groups g ON a.group_id = g.group_id
+                WHERE ts.tournament_id = %s
+                ORDER BY ts.points DESC, ts.buchholz DESC, groupname
+                LIMIT 3
+                """,
+                (tournament_id,),
+            )
+            leaderboard = [
+                {
+                    "agent_id": entry[0],
+                    "points": float(entry[1]) if entry[1] is not None else 0.0,
+                    "rounds_played": entry[2],
+                    "groupname": entry[3],
+                    "agent_name": entry[4],
+                }
+                for entry in cur.fetchall()
+            ]
+            tournaments.append(
+                {
+                    "id": row[0],
+                    "name": row[1],
+                    "game": row[2],
+                    "rounds": row[3],
+                    "status": row[4],
+                    "created_at": row[5].isoformat() if row[5] else None,
+                    "completed_rounds": round_count,
+                    "leaderboard": leaderboard,
+                }
+            )
+
+        return jsonify({"tournaments": tournaments})
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn:
+            conn.close()
+
+
+@app.route("/api/admin/tournaments/<int:tournament_id>", methods=["GET"])
+def tournament_detail(tournament_id):
+    if "role" not in session or session["role"] != "admin":
+        return jsonify({"error": "Unauthorized"}), 401
+
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        cur.execute(
+            """
+            SELECT tournament_id, name, game, rounds, status, created_at
+            FROM tournaments
+            WHERE tournament_id = %s
+            """,
+            (tournament_id,),
+        )
+        tournament = cur.fetchone()
+        if not tournament:
+            return jsonify({"error": "Tournament not found"}), 404
+
+        cur.execute(
+            """
+            SELECT round_id, round_number, created_at
+            FROM tournament_rounds
+            WHERE tournament_id = %s
+            ORDER BY round_number ASC
+            """,
+            (tournament_id,),
+        )
+        rounds = []
+        for round_row in cur.fetchall():
+            round_id, round_number, created_at = round_row
+            cur.execute(
+                """
+                SELECT tm.tournament_match_id,
+                       tm.agent1_id,
+                       tm.agent2_id,
+                       tm.agent1_score,
+                       tm.agent2_score,
+                       tm.result,
+                       tm.winner_agent_id,
+                       tm.metadata,
+                       tm.created_at
+                FROM tournament_matches tm
+                WHERE tm.tournament_id = %s AND tm.round_id = %s
+                ORDER BY tm.tournament_match_id
+                """,
+                (tournament_id, round_id),
+            )
+            match_rows = cur.fetchall()
+            matches = []
+            for match in match_rows:
+                raw_metadata = match[7]
+                if raw_metadata is None:
+                    metadata = None
+                elif isinstance(raw_metadata, str):
+                    try:
+                        metadata = json.loads(raw_metadata)
+                    except json.JSONDecodeError:
+                        metadata = raw_metadata
+                else:
+                    metadata = raw_metadata
+                matches.append(
+                    {
+                        "id": match[0],
+                        "agent1_id": match[1],
+                        "agent2_id": match[2],
+                        "agent1_score": float(match[3]) if match[3] is not None else 0.0,
+                        "agent2_score": float(match[4]) if match[4] is not None else 0.0,
+                        "result": match[5],
+                        "winner_agent_id": match[6],
+                        "metadata": metadata,
+                        "created_at": match[8].isoformat() if match[8] else None,
+                    }
+                )
+            rounds.append(
+                {
+                    "round_id": round_id,
+                    "round_number": round_number,
+                    "created_at": created_at.isoformat() if created_at else None,
+                    "matches": matches,
+                }
+            )
+
+        cur.execute(
+            """
+            SELECT ts.agent_id,
+                   ts.points,
+                   ts.rounds_played,
+                   ts.buchholz,
+                   COALESCE(g.groupname, 'Unknown') AS groupname,
+                   COALESCE(a.name, 'Unknown') AS agent_name
+            FROM tournament_standings ts
+            LEFT JOIN agents a ON ts.agent_id = a.agent_id
+            LEFT JOIN groups g ON a.group_id = g.group_id
+            WHERE ts.tournament_id = %s
+            ORDER BY ts.points DESC, ts.buchholz DESC, groupname
+            """,
+            (tournament_id,),
+        )
+        standings = [
+            {
+                "agent_id": row[0],
+                "points": float(row[1]) if row[1] is not None else 0.0,
+                "rounds_played": row[2],
+                "buchholz": float(row[3]) if row[3] is not None else 0.0,
+                "groupname": row[4],
+                "agent_name": row[5],
+            }
+            for row in cur.fetchall()
+        ]
+
+        return jsonify(
+            {
+                "tournament": {
+                    "id": tournament[0],
+                    "name": tournament[1],
+                    "game": tournament[2],
+                    "rounds": tournament[3],
+                    "status": tournament[4],
+                    "created_at": tournament[5].isoformat() if tournament[5] else None,
+                },
+                "rounds": rounds,
+                "standings": standings,
+            }
+        )
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn:
+            conn.close()
+
 if __name__ == "__main__":
     app.run(debug=True, port=5001)

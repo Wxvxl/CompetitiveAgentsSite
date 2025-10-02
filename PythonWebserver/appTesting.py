@@ -226,12 +226,12 @@ assert test_create_group("invalid@example.com", "password", "anothergroup") == F
 print("Invalid create group test passed")
 
 # Running tests on groups
-# assert test_run_tests_endpoint("group1", "conn4") == True
+assert test_run_tests_endpoint("group1", "conn4") == True
 assert test_run_tests_endpoint("group1", "tictactoe") == True
 print("Group against test-agents test passed")
 
 # Running group vs group
-# assert test_group_vs_group_endpoint("group1", "group2", "conn4") == True
+assert test_group_vs_group_endpoint("group1,group2", "conn4") == True
 assert test_group_vs_group_endpoint("group1,group2", "tictactoe") == True
 print("Group vs Group endpoint test passed")
 print("All pytest checks passed!")

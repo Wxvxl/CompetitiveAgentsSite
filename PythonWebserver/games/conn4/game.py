@@ -1,17 +1,21 @@
 import random
 class Game:
-    def __init__(self, agent1, agent2):
+    def __init__(self, agents):
         '''
-        Creates a new game with an instances of agent1_cls and agents2_cls
+        Creates a new game with a list of agents. Connect 4 requires exactly 2 agents.
         '''
-        self.agents = [agent1, agent2]
+        if len(agents) != 2:
+            raise ValueError("Connect 4 requires exactly 2 agents.")
+        self.agents = agents
         self.board = ['','','','','','','']
         self.move_order = ['','','','','','','']
         self.winner = None
 
     def play(self):
         '''
-        Plays the game by interleaving moves from agent1 and agent2
+        Plays the game by interleaving moves from the agents.
+        Returns [winner_index, loser_index] where indices correspond to self.agents,
+        or [None, None] for a draw.
         '''
         current = 0 if random.random() < 0.5 else 1
         symbols = ['X','O']
@@ -24,16 +28,19 @@ class Game:
                 self.board[last_move] = self.board[last_move] + symbols[current]
                 self.move_order[last_move] = self.move_order[last_move] + counters[current]
                 counters[current] = chr(ord(counters[current])+1)
-                current = (current + 1) %2
+                current = (current + 1) % 2
             else:
                 print('Illegal move. Game over')
-                self.winner = symbols[(current + 1) %2]
-        if self.winner==None:
-            print('Game Drawn')
-        else:    
-            print('Game over,', self.winner, 'won.')
+                self.winner = symbols[(current + 1) % 2]  # Opponent wins on illegal move
+        
         print('Final board\n', self.board_string())
-        return self.winner
+        
+        if self.winner == 'X':
+            return [0, 1]  # agents[0] wins, agents[1] loses
+        elif self.winner == 'O':
+            return [1, 0]  # agents[1] wins, agents[0] loses
+        else:
+            return [None, None]  # Draw
 
     def board_string(self):
         s = ''

@@ -52,6 +52,6 @@ Creating a new games requires the following set of specifications:
 ### 2. All games must have a game.py stored in the root folder.
 ### 2.1 The class for the game **must** be a class type of **Game**
 ### 2.2 The class must have an **__init__** that accepts a parameter of agents, which is a list of agents competing in the game.
-### 2.3 The class must have a **play()** function that accepts on parameters
+### 2.3 The class must have a **play()** function that accepts no parameters
 ### 2.4 The **play()** function must return a list, which is the result of the game. Generally the 0th Index is the winner, while the 1st Index is the loser. But different games can handle this differently.
 ### 2.5 Inside there should be an /agents/ folder that contains two sub-folder to store agents: **students/** and **test/** The students folder contains user submitted agents while the test/ folder contains the agents that are used to test against the student's agent.

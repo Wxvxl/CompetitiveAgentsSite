@@ -19,6 +19,7 @@ games = {
             ("minimax.py", "C4MinimaxAgent"), # First entry is the test agent file, second is the class name.
             ("randomagent.py", "C4RandomAgent")
         ],
+        "gamesize" : 2, # Number of players
         "agent": "C4Agent" # The agent name for every student.
     },
     "tictactoe": {
@@ -27,6 +28,7 @@ games = {
            ("firstavail.py", "FirstAvailableAgent"),
            ("random.py", "RandomAgent") 
        ],
+       "gamesize" : 2, # Number of players
        "agent" : "TTTAgent"
     }
 }
@@ -155,15 +157,15 @@ def run_tests_on_group(groupname, game):
 
         test_agent_name = test_class  # <- move inside the loop
 
-        game_instance = GameClass(GroupAgentClass(), TestAgentClass())
-        winner = game_instance.play()
+        game_instance = GameClass([GroupAgentClass(), TestAgentClass()])
+        result = game_instance.play()
 
-        if winner == "X":
-            winner_name = group_agent_name
-        elif winner == "O":
-            winner_name = test_agent_name
-        else:
+        if result[0] is None:
             winner_name = "Draw"
+        elif result[0] == 0:
+            winner_name = group_agent_name
+        else:
+            winner_name = test_agent_name
         
         results["matches"].append({
             "test_agent": test_agent_name,
@@ -173,13 +175,12 @@ def run_tests_on_group(groupname, game):
     return results
 
 
-def run_group_vs_group(group1, group2, game):
+def run_group_vs_group(groups, game):
     """
-    Run a single match between two groups for a provided game.
+    Run a single match between groups for a provided game.
 
     Args:
-        group1 (str) : Groupname of the first group.
-        group2 (str) : Groupname of the second group.
+        groups (str) : List of group names that will be competing in the games. 
         game (str): One of the valid game ID in the games dictionary.
 
     Raises:
@@ -197,37 +198,42 @@ def run_group_vs_group(group1, group2, game):
     GameClass = getattr(game_module, "Game")
 
     # Fetch agents from each group
-    agent1 = fetch_latest_agent(group1, game)
-    agent2 = fetch_latest_agent(group2, game)
-
-    if not agent1:
-        return {"error": f"No agent found for group: {group1}"}
-    if not agent2:
-        return {"error": f"No agent found for group: {group2}"}
+    agents_data = []
+    for group in groups:
+        agent = fetch_latest_agent(group, game)
+        if not agent:
+            return {"error": f"No agent found for group: {group}"}
+        agents_data.append(agent)
 
     agent_class_name = game_info["agent"]
+    
+    if len(agents_data) != game_info["gamesize"]:
+        return {"error": f"Game '{game}' requires {game_info['gamesize']} players, but {len(agents_data)} agents provided."}
 
     # Load classes dynamically
-    Agent1Class = load_class_from_file(agent1["file_path"], agent_class_name)
-    Agent2Class = load_class_from_file(agent2["file_path"], agent_class_name)
-
+    agent_classes = []
+    for agent_data in agents_data:
+        AgentClass = load_class_from_file(agent_data["file_path"], agent_class_name)
+        agent_classes.append(AgentClass())
+        
     # Run the match
-    game_instance = GameClass(Agent1Class(), Agent2Class())
-    winner = game_instance.play()
-    if winner == "X":
-        winner_agent = agent1["name"]
-    elif winner == "O":
-        winner_agent = agent2["name"]
+    game_instance = GameClass(agent_classes)  # Pass list of agents
+    result = game_instance.play()  # Returns [winner_index, loser_index] or similar
+    
+    if result is None:
+        winner_group = "Draw"
+        loser_group = "Draw"
     else:
-        winner_agent = "Draw"
+        winner_index = result[0]
+        loser_index = result[1]
+        winner_group = f"{groups[winner_index]} ({agents_data[winner_index]['name']})"
+        loser_group = f"{groups[loser_index]} ({agents_data[loser_index]['name']})"
 
-    results = {
-        "group1": {"name": group1, "agent": agent1["name"]},
-        "group2": {"name": group2, "agent": agent2["name"]},
-        "winner": winner_agent
+    return {
+        "groups": [{"name": group, "agent": agents_data[i]["name"]} for i, group in enumerate(groups)],
+        "winner": winner_group,
+        "loser": loser_group
     }
-
-    return results
 
 @app.route("/api/admin/assign-group", methods=["POST"])
 def assign_group():
@@ -409,10 +415,11 @@ def play_group_vs_tests(groupname, game):
         traceback.print_exc()
         return jsonify({"error": str(e)}), 400
     
-@app.route("/play/group_vs_group/<group1>/<group2>/<game>", methods=["GET"])
-def play_group_vs_group(group1, group2, game):
+@app.route("/play/group_vs_group/<groups>/<game>", methods=["GET"])
+def play_group_vs_group(groups, game):
     try:
-        results = run_group_vs_group(group1, group2, game)
+        group_list = groups.split(',')  # Parse comma-separated groups into a list
+        results = run_group_vs_group(group_list, game)
         return jsonify(results)
     except Exception as e:
         return jsonify({"error": str(e)}), 400

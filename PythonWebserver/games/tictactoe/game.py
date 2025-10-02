@@ -31,7 +31,6 @@ class Game:
         return all(cell != " " for cell in self.board)
 
     def play(self):
-        winner = []
         while True:
             if self.current_player == "X":
                 # Pass a copy for the move command so agents dont mutate the original board. 

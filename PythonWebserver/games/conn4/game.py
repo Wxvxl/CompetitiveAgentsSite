@@ -40,7 +40,7 @@ class Game:
         elif self.winner == 'O':
             return [1, 0]  # agents[1] wins, agents[0] loses
         else:
-            return [None, None]  # Draw
+            return None  # Draw
 
     def board_string(self):
         s = ''

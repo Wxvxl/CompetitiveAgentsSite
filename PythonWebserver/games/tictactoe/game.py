@@ -1,8 +1,9 @@
 class Game:
-    def __init__(self, agent1, agent2):
+    def __init__(self, agents):
+        if len(agents) != 2:
+            raise ValueError("Tic Tac Toe requires exactly 2 agents.")
         self.board = [" "] * 9
-        self.agent1 = agent1
-        self.agent2 = agent2
+        self.agents = agents
         self.current_player = "X"
         
     def print_board(self):
@@ -25,26 +26,35 @@ class Game:
             if winner:
                 return True
         return False
+    
     def is_full(self):
         return all(cell != " " for cell in self.board)
 
     def play(self):
+        winner = []
         while True:
             if self.current_player == "X":
                 # Pass a copy for the move command so agents dont mutate the original board. 
-                move = self.agent1.move(self.board[:])
+                move = self.agents[0].move(self.board[:])  # Use agents[0]
             else:
-                move = self.agent2.move(self.board[:])
+                move = self.agents[1].move(self.board[:])  # Use agents[1]
 
             if move not in range(9) or self.board[move] != " ":
                 # Illegal move means opponent victory.
-                return "O" if self.current_player == "X" else "X"
+                if self.current_player == "X":
+                    return [1, 0]  # agents[1] wins, agents[0] loses
+                else:
+                    return [0, 1]  # agents[0] wins, agents[1] loses
+                
             
             self.board[move] = self.current_player
             self.print_board()
             
             if self.is_winner(self.current_player):
-                return self.current_player
+                if self.current_player == "X":
+                    return [0, 1]  # agents[0] wins, agents[1] loses
+                else:
+                    return [1, 0]  # agents[1] wins, agents[0] loses
             if self.is_full():
                 return None
             

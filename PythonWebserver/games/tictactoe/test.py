@@ -1,4 +1,3 @@
-
 from game import Game
 import random
 
@@ -39,7 +38,12 @@ if __name__ == "__main__":
                 continue  # skip mirror matches
             name1, agent1 = agents[i]
             name2, agent2 = agents[j]
-            print(f"{name1} (X) vs {name2} (O)")
-            game = Game(agent1, agent2)
-            winner = game.play()
-            print("Winner:", winner, "\n")
+            print(f"{name1} (agents[0]) vs {name2} (agents[1])")
+            game = Game([agent1, agent2])  # Pass agents as a list
+            result = game.play()
+            if result is None:
+                print("Result: Draw\n")
+            else:
+                winner_name = name1 if result[0] == 0 else name2
+                loser_name = name2 if result[0] == 0 else name1
+                print(f"Winner: {winner_name}, Loser: {loser_name}\n")

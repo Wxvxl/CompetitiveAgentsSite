@@ -28,6 +28,14 @@ games = {
            ("random.py", "RandomAgent") 
        ],
        "agent" : "TTTAgent"
+    },
+    "rps": {
+        "module": "games.rps.game",
+        "tests": [
+            ("rockagent.py", "RockAgent"),
+            ("random.py", "RandomAgent")
+        ],
+        "agent": "RPSAgent"
     }
 }
 

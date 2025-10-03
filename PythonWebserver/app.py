@@ -30,6 +30,15 @@ games = {
        ],
        "gamesize" : 2, # Number of players
        "agent" : "TTTAgent"
+    },
+    "rps": {
+        "module": "games.rps.game",
+        "tests": [
+            ("rockagent.py", "RockAgent"),
+            ("random.py", "RandomAgent")
+        ],
+       "gamesize" : 2, # Number of players
+        "agent": "RPSAgent"
     }
 }
 

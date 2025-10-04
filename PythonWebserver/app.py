@@ -1057,61 +1057,50 @@ def run_contest(contest_id):
         Agent1Class = load_class_from_file(agent1_path, agent_class_name)
         Agent2Class = load_class_from_file(agent2_path, agent_class_name)
         
-        # Create agent instances with tracking
+        # Create agent instances
         agent1_instance = Agent1Class()
         agent2_instance = Agent2Class()
         
-        # Create game instance with modified tracking
-        game_instance = GameClass(agent1_instance, agent2_instance)
-        
-        # Track actions during gameplay
-        actions = []
-        move_number = 0
-        current = 0 if random.random() < 0.5 else 1
-        symbols = ['X', 'O']
-        last_move = -1
-        
+        # Create game instance with NEW format (list of agents)
         agent_instances = [agent1_instance, agent2_instance]
         agent_ids = [agent1_id, agent2_id]
+        game_instance = GameClass(agent_instances)
         
-        # Modified play loop with tracking
-        while not game_instance.game_over():
-            board_before = game_instance.board.copy()
-            last_move = agent_instances[current].move(symbols[current], game_instance.board.copy(), last_move)
-            
-            # Validate move
-            if last_move < 7 and last_move >= 0 and len(game_instance.board[last_move]) < 6:
-                game_instance.board[last_move] = game_instance.board[last_move] + symbols[current]
-                if hasattr(game_instance, 'move_order'):
-                    counters = ['A', 'a']
-                    if current == 1:
-                        counters = [chr(ord(counters[0]) + move_number), chr(ord(counters[1]) + move_number)]
-                    game_instance.move_order[last_move] = game_instance.move_order[last_move] + counters[current]
-                
-                # Track this action (FR3.3)
+        # Track actions during gameplay by wrapping the play() method
+        actions = []
+        move_number = 0
+        
+        # Monkey-patch the agents' move methods to capture actions
+        original_moves = [agent.move for agent in agent_instances]
+        
+        def create_tracked_move(agent_idx, original_move_func):
+            def tracked_move(*args, **kwargs):
+                move = original_move_func(*args, **kwargs)
+                # Capture the action
                 actions.append({
-                    "move_number": move_number,
-                    "agent_id": agent_ids[current],
-                    "action": str(last_move),
-                    "board_state": str(game_instance.board)
+                    "move_number": len(actions),
+                    "agent_id": agent_ids[agent_idx],
+                    "action": str(move),
+                    "board_state": str(game_instance.board.copy())
                 })
-                
-                move_number += 1
-                current = (current + 1) % 2
-            else:
-                # Illegal move - other player wins
-                game_instance.winner = symbols[(current + 1) % 2]
-                break
+                return move
+            return tracked_move
         
-        # Determine winner
-        winner_symbol = game_instance.winner
+        # Apply tracking wrappers
+        for idx, agent in enumerate(agent_instances):
+            agent.move = create_tracked_move(idx, original_moves[idx])
+        
+        # Run the game with NEW return format
+        result = game_instance.play()
+        
+        # Determine winner from NEW format
+        # result is [winner_index, loser_index] or None for draw
         winner_id = None
         
-        if winner_symbol == 'X':
-            winner_id = agent1_id
-        elif winner_symbol == 'O':
-            winner_id = agent2_id
-        # If None, it's a draw
+        if result is not None:
+            winner_index = result[0]
+            winner_id = agent_ids[winner_index]
+        # If result is None, it's a draw (winner_id stays None)
         
         # Update contest status
         cur.execute("""

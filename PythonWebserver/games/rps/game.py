@@ -55,14 +55,15 @@ class Game:
 
         while score[0] < 2 and score[1] < 2:
             winner = self.play_round()
-            if winner:
-                score[0] += winner[0]
-                score[1] += winner[1]
+            if winner == [0,1]:
+                score[0] += 1
+            elif winner == [1,0]:
+                score[1] += 1
+            # tie: do nothing
 
-        # Match winner
         if score[0] == 2:
-            return [0, 1]  # agent1 wins match
+            return [0,1]  # agent1 wins
         elif score[1] == 2:
-            return [1, 0]  # agent2 wins match
+            return [1,0]  # agent2 wins
         else:
             return None

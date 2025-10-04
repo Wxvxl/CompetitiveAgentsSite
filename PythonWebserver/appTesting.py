@@ -100,16 +100,32 @@ cur.execute(
     (group2_id, "g2agent", "tictactoe", os.path.join(base_path, "tictactoe", "agents", "students", "group2", "g2agent.py"))
 )
 
+# Insert RPS agents for group1
+cur.execute(
+    "INSERT INTO agents (group_id, name, game, file_path) VALUES (%s, %s, %s, %s);",
+    (group1_id, "group1_agent", "rps", os.path.join(base_path, "rps", "agents", "students", "group1", "group1agent.py"))
+)
+
+# Insert RPS agents for group2
+cur.execute(
+    "INSERT INTO agents (group_id, name, game, file_path) VALUES (%s, %s, %s, %s);",
+    (group2_id, "group2_agent", "rps", os.path.join(base_path, "rps", "agents", "students", "group2", "group2agent.py"))
+)
+
+
 print("Inserted Agents")
 
 cur.execute("SELECT * FROM agents;")
 agents_in_db = cur.fetchall()
-assert len(agents_in_db) >= 4, "At least 4 agents should be inserted"
+assert len(agents_in_db) >= 6, "At least 6 agents should be inserted"
 agent_names = [a[2] for a in agents_in_db]
 assert "group1agent" in agent_names, "group1agent should be in agents"
 assert "g1agent" in agent_names, "g1agent should be in agents"
 assert "group2agent" in agent_names, "group2agent should be in agents"
 assert "g2agent" in agent_names, "g2agent should be in agents"
+assert "group1_agent" in agent_names, "group1_agent should be in agents"
+assert "group2_agent" in agent_names, "group2_agent should be in agents"
+
 
 # Endpoint Testing Functions
 def test_register(username, email, password, role):
@@ -228,11 +244,14 @@ print("Invalid create group test passed")
 # Running tests on groups
 assert test_run_tests_endpoint("group1", "conn4") == True
 assert test_run_tests_endpoint("group1", "tictactoe") == True
+assert test_run_tests_endpoint("group1", "rps") == True
+
 print("Group against test-agents test passed")
 
 # Running group vs group
 assert test_group_vs_group_endpoint("group1,group2", "conn4") == True
 assert test_group_vs_group_endpoint("group1,group2", "tictactoe") == True
+assert test_group_vs_group_endpoint("group1,group2", "rps") == True
 print("Group vs Group endpoint test passed")
 print("All pytest checks passed!")
 

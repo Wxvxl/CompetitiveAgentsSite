@@ -30,6 +30,15 @@ games = {
        ],
        "gamesize" : 2, # Number of players
        "agent" : "TTTAgent"
+    },
+    "rps": {
+        "module": "games.rps.game",
+        "tests": [
+            ("rockagent.py", "RockAgent"),
+            ("random.py", "RandomAgent")
+        ],
+       "gamesize" : 2, # Number of players
+        "agent": "RPSAgent"
     }
 }
 
@@ -359,7 +368,8 @@ def upload_agent(game):
         path = os.path.join(os.getcwd(), "games", game, "agents", "students", group_name)
         os.makedirs(path, exist_ok=True)
 
-        file.save(os.path.join(path, file.filename))
+        save_path = os.path.join(path, file.filename)
+        file.save(save_path)
         
         cur.execute(
             """
@@ -367,7 +377,7 @@ def upload_agent(game):
             VALUES (%s, %s, %s, %s)
             RETURNING agent_id;
             """,
-            (session["group_id"], file.filename[:-3], game, file.filename)
+            (session["group_id"], file.filename[:-3], game, save_path)
         )
                 
         agent_id = cur.fetchone()[0]

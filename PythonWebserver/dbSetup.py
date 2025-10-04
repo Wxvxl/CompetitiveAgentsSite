@@ -77,7 +77,7 @@ CREATE TABLE agents (
     name VARCHAR(50) NOT NULL,
     game varchar(50) NOT NULL,
     file_path varchar(255),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE 'Australia/Perth')
 );
 """)
 
@@ -88,7 +88,7 @@ CREATE TABLE matches (
     agent2_id INT NOT NULL REFERENCES agents(agent_id) ON DELETE CASCADE,
     group1_id INT NOT NULL REFERENCES groups(group_id) ON DELETE CASCADE,
     group2_id INT NOT NULL REFERENCES groups(group_id) ON DELETE CASCADE,
-    played_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    played_at TIMESTAMP DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE 'Australia/Perth')
 );
 """)
 

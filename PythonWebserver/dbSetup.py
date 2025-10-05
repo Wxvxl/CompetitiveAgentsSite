@@ -145,7 +145,7 @@ CREATE TABLE tournaments (
     tournament_id SERIAL PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
     game VARCHAR(50) NOT NULL,
-    rounds INT NOT NULL,
+    rounds INT,
     status VARCHAR(20) NOT NULL DEFAULT 'pending',
     created_by INT REFERENCES users(user_id),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

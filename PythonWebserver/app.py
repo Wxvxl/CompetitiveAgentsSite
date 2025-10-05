@@ -3,9 +3,11 @@ from flask_cors import CORS
 import importlib.util
 import psycopg2
 from psycopg2 import errors
+from psycopg2.extras import execute_batch
 import bcrypt
 import os
 import random
+import math
 import json
 
 app = Flask(__name__)
@@ -140,161 +142,120 @@ def resolve_agent_path(game, groupname, file_path):
     """
     if not file_path:
         return file_path
-    if os.path.isabs(file_path) and os.path.exists(file_path):
-        return file_path
-    candidate = os.path.join(
-        os.getcwd(),
-        "games",
-        game,
-        "agents",
-        "students",
-        groupname,
-        file_path,
-    )
-    if os.path.exists(candidate):
-        return candidate
+
+    if os.path.isabs(file_path):
+        return file_path if os.path.exists(file_path) else file_path
+
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(current_dir)
+
+    search_candidates = [
+        os.path.join(current_dir, "games", game, "agents", "students", groupname, file_path),
+        os.path.join(project_root, "games", game, "agents", "students", groupname, file_path),
+        os.path.join(current_dir, file_path),
+        os.path.join(project_root, file_path),
+    ]
+
+    for candidate in search_candidates:
+        if os.path.exists(candidate):
+            return os.path.abspath(candidate)
+
     return file_path
 
 
+def load_agent_class(filepath, class_name):
+    """Normalize path, validate existence, and return the agent class."""
+    if not filepath:
+        raise FileNotFoundError("Agent file path is missing.")
+
+    full_path = os.path.abspath(filepath)
+    if not os.path.exists(full_path):
+        raise FileNotFoundError(f"Agent file not found: {full_path}")
+
+    return load_class_from_file(full_path, class_name)
+
+
 def play_agents_match(agent1_info, agent2_info, game):
-    """
-    Run a match between two agent entries and return the result summary.
-    returns a dictionary with keys:
-    """
+    """Run a match between two agent entries and return the result summary."""
     if game not in games:
         raise ValueError(f"Game '{game}' not found in configuration.")
+
     game_info = games[game]
     game_module = __import__(game_info["module"], fromlist=["Game"])
     GameClass = getattr(game_module, "Game")
-
     agent_class_name = game_info["agent"]
 
     agent1_path = resolve_agent_path(game, agent1_info["groupname"], agent1_info["file_path"])
     agent2_path = resolve_agent_path(game, agent2_info["groupname"], agent2_info["file_path"])
 
-    Agent1Class = load_class_from_file(agent1_path, agent_class_name)
-    Agent2Class = load_class_from_file(agent2_path, agent_class_name)
+    Agent1Class = load_agent_class(agent1_path, agent_class_name)
+    Agent2Class = load_agent_class(agent2_path, agent_class_name)
 
-    game_instance = GameClass(Agent1Class(), Agent2Class())
-    winner = game_instance.play()
+    game_instance = GameClass([Agent1Class(), Agent2Class()])
 
-    if winner == "X":
-        winner_agent_id = agent1_info["agent_id"]
-        agent1_score = 1
-        agent2_score = 0
-        result = "agent1"
-        winner_label = agent1_info["agent_name"]
-    elif winner == "O":
-        winner_agent_id = agent2_info["agent_id"]
-        agent1_score = 0
-        agent2_score = 1
-        result = "agent2"
-        winner_label = agent2_info["agent_name"]
+    result_payload = game_instance.play()
+
+    winner_agent_id = None
+    agent1_score = 0
+    agent2_score = 0
+    result_key = "draw"
+    winner_label = "Draw"
+
+    if isinstance(result_payload, (list, tuple)) and result_payload:
+        winner_index = result_payload[0]
+        if winner_index in (0, 1):
+            if winner_index == 0:
+                winner_agent_id = agent1_info["agent_id"]
+                agent1_score, agent2_score = 1, 0
+                result_key = "agent1"
+                winner_label = agent1_info["agent_name"]
+            else:
+                winner_agent_id = agent2_info["agent_id"]
+                agent1_score, agent2_score = 0, 1
+                result_key = "agent2"
+                winner_label = agent2_info["agent_name"]
     else:
-        winner_agent_id = None
-        agent1_score = 0
-        agent2_score = 0
-        result = "draw"
-        winner_label = "Draw"
+        # Unsupported result types are treated as draw for safety.
+        result_payload = None
 
     return {
         "winner_agent_id": winner_agent_id,
         "agent1_score": agent1_score,
         "agent2_score": agent2_score,
-        "result": result,
+        "result": result_key,
         "winner_label": winner_label,
-        "raw_winner": winner,
+        "raw_winner": result_payload,
     }
 
 
 def initialize_tournament_standings(cur, tournament_id, agents):
     """Insert initial standings rows and return an in-memory standings map."""
-    standings = {}
-    for agent in agents:
-        cur.execute(
-            """
-            INSERT INTO tournament_standings (tournament_id, agent_id, points, rounds_played)
-            VALUES (%s, %s, 0, 0)
-            ON CONFLICT (tournament_id, agent_id)
-            DO UPDATE SET points = EXCLUDED.points, rounds_played = EXCLUDED.rounds_played;
-            """,
-            (tournament_id, agent["agent_id"]),
-        )
-        standings[agent["agent_id"]] = {
+    if not agents:
+        return {}
+
+    execute_batch(
+        cur,
+        """
+        INSERT INTO tournament_standings (tournament_id, agent_id, points, rounds_played)
+        VALUES (%s, %s, 0, 0)
+        ON CONFLICT (tournament_id, agent_id)
+        DO UPDATE SET points = EXCLUDED.points, rounds_played = EXCLUDED.rounds_played;
+        """,
+        [(tournament_id, agent["agent_id"]) for agent in agents],
+    )
+
+    return {
+        agent["agent_id"]: {
             "agent_id": agent["agent_id"],
             "group_id": agent["group_id"],
             "groupname": agent["groupname"],
             "agent_name": agent["agent_name"],
             "file_path": agent["file_path"],
             "points": 0,
-            "opponents": set(),
             "rounds_played": 0,
-            "got_bye": False,
         }
-    return standings
-
-
-def swiss_pairings(standings):
-    """Generate Swiss-system pairings and optionally return a bye candidate."""
-    players = sorted(
-        standings.values(),
-        key=lambda entry: (-entry["points"], entry["groupname"]),
-    )
-    pairings = []
-    used = set()
-
-    for idx, player in enumerate(players):
-        pid = player["agent_id"]
-        if pid in used:
-            continue
-
-        opponent = None
-        for candidate in players[idx + 1 :]:
-            cid = candidate["agent_id"]
-            if cid in used or cid == pid:
-                continue
-            if cid not in player["opponents"]:
-                opponent = candidate
-                break
-
-        if opponent is None:
-            for candidate in players:
-                cid = candidate["agent_id"]
-                if cid in used or cid == pid:
-                    continue
-                if cid not in player["opponents"]:
-                    opponent = candidate
-                    break
-
-        if opponent is None:
-            for candidate in players:
-                cid = candidate["agent_id"]
-                if cid in used or cid == pid:
-                    continue
-                opponent = candidate
-                break
-
-        if opponent is None:
-            used.add(pid)
-            return pairings, pid
-
-        used.add(pid)
-        used.add(opponent["agent_id"])
-        pairings.append((pid, opponent["agent_id"]))
-
-    remaining = [p for p in players if p["agent_id"] not in used]
-    if remaining:
-        remaining.sort(key=lambda entry: (entry["got_bye"], -entry["points"]))
-        candidate = None
-        for entry in remaining:
-            if not entry["got_bye"]:
-                candidate = entry
-                break
-        if candidate is None:
-            candidate = remaining[0]
-        return pairings, candidate["agent_id"]
-
-    return pairings, None
+        for agent in agents
+    }
 
 
 def update_standing(cur, standings, tournament_id, agent_id, points_increment, opponent_id=None):
@@ -303,8 +264,6 @@ def update_standing(cur, standings, tournament_id, agent_id, points_increment, o
     increment = int(points_increment)
     entry["points"] += increment
     entry["rounds_played"] += 1
-    if opponent_id is not None:
-        entry["opponents"].add(opponent_id)
     cur.execute(
         """
         UPDATE tournament_standings
@@ -319,13 +278,24 @@ def update_standing(cur, standings, tournament_id, agent_id, points_increment, o
 
 def record_tournament_match(cur, tournament_id, round_id, round_number, agent1, agent2, match_result):
     """Persist a tournament match outcome."""
+    raw_winner = match_result.get("raw_winner")
+    normalized_winner = match_result.get("result")
+
+    if isinstance(raw_winner, (list, tuple)) and raw_winner:
+        index = raw_winner[0]
+        if index in (0, 1):
+            normalized_winner = f"agent{index + 1}"
+    elif raw_winner is None and match_result.get("winner_agent_id") is None:
+        normalized_winner = normalized_winner or "draw"
+
     metadata = {
         "agent1": {
             "group": agent1["groupname"],
             "name": agent1["agent_name"],
         },
         "winner": match_result["winner_label"],
-        "raw_winner": match_result["raw_winner"],
+        "raw_winner": raw_winner,  # Preserve engine-native outcome for debugging/audit trails.
+        "normalized_winner": normalized_winner,
     }
     agent2_id = None
     agent2_score = 0
@@ -338,6 +308,16 @@ def record_tournament_match(cur, tournament_id, round_id, round_number, agent1, 
         agent2_score = match_result["agent2_score"]
     else:
         metadata["agent2"] = None
+
+    if "decision" in match_result:
+        metadata["decision"] = match_result["decision"]  # Indicates whether advancement was regulation, bye, or tiebreak.
+    if "advancing_agent_id" in match_result:
+        metadata["advancing_agent_id"] = match_result["advancing_agent_id"]  # Explicitly records who moved on to the next round.
+
+        advancing_agent = agent1
+        if agent2 is not None and match_result["advancing_agent_id"] == agent2["agent_id"]:
+            advancing_agent = agent2
+        metadata["advancing_agent_name"] = advancing_agent["agent_name"]
 
     cur.execute(
         """
@@ -1683,6 +1663,9 @@ def get_agent_record(agent_id):
 
 @app.route("/api/admin/tournaments", methods=["POST"])
 def start_tournament():
+    """
+    Admin endpoint to launch a single-elimination tournament for a game.
+    """
     if "role" not in session or session["role"] != "admin":
         return jsonify({"error": "Unauthorized"}), 401
 
@@ -1691,15 +1674,7 @@ def start_tournament():
     if not game:
         return jsonify({"error": "Game is required"}), 400
 
-    try:
-        rounds = int(data.get("rounds", 3))
-    except (TypeError, ValueError):
-        return jsonify({"error": "Rounds must be an integer"}), 400
-
-    if rounds <= 0:
-        return jsonify({"error": "Rounds must be greater than zero"}), 400
-
-    name = data.get("name") or f"{game.title()} Swiss Tournament"
+    name = data.get("name") or f"{game.title()} Knockout Tournament"
 
     conn = None
     try:
@@ -1710,23 +1685,24 @@ def start_tournament():
         if len(agents) < 2:
             return jsonify({"error": "At least two agents are required to start a tournament"}), 400
 
+        #total_rounds = max(1, math.ceil(math.log2(len(agents))))
+
         cur.execute(
             """
             INSERT INTO tournaments (name, game, rounds, status, created_by)
             VALUES (%s, %s, %s, %s, %s)
             RETURNING tournament_id
             """,
-            (name, game, rounds, "running", session.get("user_id")),
+            (name, game, None, "running", session.get("user_id")),
         )
         tournament_id = cur.fetchone()[0]
 
         standings = initialize_tournament_standings(cur, tournament_id, agents)
+        bracket = [agent["agent_id"] for agent in agents]
+        random.shuffle(bracket)
 
-        for round_number in range(1, rounds + 1):
-            pairings, bye_agent_id = swiss_pairings(standings)
-            if not pairings and bye_agent_id is None:
-                break
-
+        round_number = 1
+        while len(bracket) > 1:
             cur.execute(
                 """
                 INSERT INTO tournament_rounds (tournament_id, round_number)
@@ -1737,9 +1713,11 @@ def start_tournament():
             )
             round_id = cur.fetchone()[0]
 
-            if bye_agent_id is not None:
+            next_round = []
+
+            if len(bracket) % 2 == 1:
+                bye_agent_id = bracket.pop()
                 bye_agent = standings[bye_agent_id]
-                bye_agent["got_bye"] = True
                 bye_result = {
                     "winner_agent_id": bye_agent_id,
                     "agent1_score": 1,
@@ -1747,31 +1725,48 @@ def start_tournament():
                     "result": "bye",
                     "winner_label": bye_agent["agent_name"],
                     "raw_winner": "BYE",
+                    "decision": "bye",
+                    "advancing_agent_id": bye_agent_id,
                 }
-                update_standing(cur, standings, tournament_id, bye_agent_id, bye_result["agent1_score"])
+                update_standing(cur, standings, tournament_id, bye_agent_id, 1)
                 record_tournament_match(cur, tournament_id, round_id, round_number, bye_agent, None, bye_result)
+                next_round.append(bye_agent_id)
 
-            for agent1_id, agent2_id in pairings:
+            for index in range(0, len(bracket), 2):
+                agent1_id = bracket[index]
+                agent2_id = bracket[index + 1]
                 agent1 = standings[agent1_id]
                 agent2 = standings[agent2_id]
+
                 match_result = play_agents_match(agent1, agent2, game)
-                update_standing(
-                    cur,
-                    standings,
-                    tournament_id,
-                    agent1_id,
-                    match_result["agent1_score"],
-                    opponent_id=agent2_id,
-                )
-                update_standing(
-                    cur,
-                    standings,
-                    tournament_id,
-                    agent2_id,
-                    match_result["agent2_score"],
-                    opponent_id=agent1_id,
-                )
-                record_tournament_match(cur, tournament_id, round_id, round_number, agent1, agent2, match_result)
+                record_payload = dict(match_result)
+
+                winner_id = match_result["winner_agent_id"]
+                decision = "regulation"  # Default outcome; adjusted below for byes/tiebreaks.
+
+                if winner_id == agent1_id:
+                    update_standing(cur, standings, tournament_id, agent1_id, 1, opponent_id=agent2_id)
+                    update_standing(cur, standings, tournament_id, agent2_id, -1, opponent_id=agent1_id)
+                elif winner_id == agent2_id:
+                    update_standing(cur, standings, tournament_id, agent1_id, -1, opponent_id=agent2_id)
+                    update_standing(cur, standings, tournament_id, agent2_id, 1, opponent_id=agent1_id)
+                else:
+                    decision = "tiebreak(draw)"  # No clear winner; choose advancement while keeping scores neutral.
+                    update_standing(cur, standings, tournament_id, agent1_id, 0, opponent_id=agent2_id)
+                    update_standing(cur, standings, tournament_id, agent2_id, 0, opponent_id=agent1_id)
+                    winner_id = random.choice((agent1_id, agent2_id))
+                    record_payload["winner_agent_id"] = winner_id
+                    record_payload["result"] = "agent1" if winner_id == agent1_id else "agent2"
+                    record_payload["winner_label"] = f"{standings[winner_id]['agent_name']} (tiebreak)"
+
+                record_payload["decision"] = decision
+                record_payload["advancing_agent_id"] = winner_id
+
+                record_tournament_match(cur, tournament_id, round_id, round_number, agent1, agent2, record_payload)
+                next_round.append(winner_id)
+
+            bracket = next_round
+            round_number += 1
 
         cur.execute(
             "UPDATE tournaments SET status = 'completed' WHERE tournament_id = %s",
@@ -1794,6 +1789,16 @@ def start_tournament():
 
 @app.route("/api/admin/tournaments", methods=["GET"])
 def list_tournaments():
+    """
+
+    Returns:
+        200: {"tournaments": [ ... ]} containing id, name, game, status,
+             created_at ISO timestamp, completed_round count, and top leaderboard rows.
+
+    Errors:
+        401: {"error": "Unauthorized"}
+        500: {"error": str} when database access fails
+    """
     if "role" not in session or session["role"] != "admin":
         return jsonify({"error": "Unauthorized"}), 401
 
@@ -1825,7 +1830,7 @@ def list_tournaments():
                 LEFT JOIN agents a ON ts.agent_id = a.agent_id
                 LEFT JOIN groups g ON a.group_id = g.group_id
                 WHERE ts.tournament_id = %s
-                ORDER BY ts.points DESC, groupname
+                ORDER BY ts.points DESC, ts.rounds_played DESC, groupname
                 LIMIT 3
                 """,
                 (tournament_id,),
@@ -1864,6 +1869,24 @@ def list_tournaments():
 
 @app.route("/api/admin/tournaments/<int:tournament_id>", methods=["GET"])
 def tournament_detail(tournament_id):
+    """Fetch full knockout bracket detail including rounds, matches, and standings.
+
+    Args:
+        tournament_id (int): Identifier of the tournament to inspect.
+
+    Returns:
+        200: {
+            "tournament": {...},
+            "rounds": [...],
+            "standings": [...]
+        }
+        with ISO timestamps and metadata per match.
+
+    Errors:
+        401: {"error": "Unauthorized"} if the caller is not an admin.
+        404: {"error": "Tournament not found"} when the id is invalid.
+        500: {"error": str} on database failures.
+    """
     if "role" not in session or session["role"] != "admin":
         return jsonify({"error": "Unauthorized"}), 401
 
@@ -1959,7 +1982,7 @@ def tournament_detail(tournament_id):
             LEFT JOIN agents a ON ts.agent_id = a.agent_id
             LEFT JOIN groups g ON a.group_id = g.group_id
             WHERE ts.tournament_id = %s
-            ORDER BY ts.points DESC, groupname
+            ORDER BY ts.points DESC, ts.rounds_played DESC, groupname
             """,
             (tournament_id,),
         )

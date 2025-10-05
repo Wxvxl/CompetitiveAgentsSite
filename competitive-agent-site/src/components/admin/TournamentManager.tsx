@@ -15,7 +15,7 @@ type TournamentSummary = {
   id: number;
   name: string;
   game: string;
-  rounds: number;
+  rounds: number | null;
   status: string;
   created_at: string | null;
   completed_rounds: number;
@@ -48,7 +48,7 @@ type TournamentDetail = {
     id: number;
     name: string;
     game: string;
-    rounds: number;
+    rounds: number | null;
     status: string;
     created_at: string | null;
   };
@@ -71,7 +71,6 @@ export default function TournamentManager() {
   const [error, setError] = useState<string>("");
   const [formState, setFormState] = useState({
     game: GAME_OPTIONS[0].value,
-    rounds: 3,
   });
 
   useEffect(() => {
@@ -127,7 +126,6 @@ export default function TournamentManager() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           game: formState.game,
-          rounds: formState.rounds,
         }),
       });
       const data = await res.json();
@@ -156,9 +154,9 @@ export default function TournamentManager() {
       },
       {
         key: "completed_rounds",
-        header: "Rounds",
-        render: (row) => `${row.completed_rounds}/${row.rounds}`,
-        width: 120,
+        header: "Rounds Played",
+        render: (row) => row.completed_rounds,
+        width: 140,
       },
       {
         key: "actions",
@@ -238,7 +236,7 @@ export default function TournamentManager() {
 
   return (
     <div>
-      <h3>Swiss Tournament</h3>
+      <h3>Knockout Tournament</h3>
       <form onSubmit={handleSubmit} style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
         <label style={{ display: "flex", flexDirection: "column", fontSize: 12, color: "#6b7280" }}>
           Game Type
@@ -253,16 +251,6 @@ export default function TournamentManager() {
               </option>
             ))}
           </select>
-        </label>
-        <label style={{ display: "flex", flexDirection: "column", fontSize: 12, color: "#6b7280" }}>
-          Rounds
-          <input
-            type="number"
-            min={1}
-            value={formState.rounds}
-            onChange={(e) => setFormState((prev) => ({ ...prev, rounds: Number(e.target.value) }))}
-            style={{ padding: 8, width: 120 }}
-          />
         </label>
         <button type="submit" disabled={creating} style={{ padding: "8px 16px" }}>
           {creating ? "Starting..." : "Start"}

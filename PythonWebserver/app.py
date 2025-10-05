@@ -223,7 +223,7 @@ def play_agents_match(agent1_info, agent2_info, game):
         "agent2_score": agent2_score,
         "result": result_key,
         "winner_label": winner_label,
-        "raw_winner": result_payload,
+        "raw_winner": result_payload, # Preserve engine-native outcome for debugging/audit trails.
     }
 
 

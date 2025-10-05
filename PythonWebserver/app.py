@@ -7,7 +7,6 @@ from psycopg2.extras import execute_batch
 import bcrypt
 import os
 import random
-import math
 import json
 
 app = Flask(__name__)

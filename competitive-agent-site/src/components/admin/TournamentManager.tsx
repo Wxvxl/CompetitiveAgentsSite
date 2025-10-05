@@ -41,9 +41,7 @@ type TournamentRound = {
   matches: TournamentMatch[];
 };
 
-type TournamentStanding = LeaderboardEntry & {
-  buchholz: number;
-};
+type TournamentStanding = LeaderboardEntry;
 
 type TournamentDetail = {
   tournament: {
@@ -192,7 +190,7 @@ export default function TournamentManager() {
     {
       key: "points",
       header: "Points",
-      render: (row) => row.points.toFixed(1),
+      render: (row) => row.points,
       width: 120,
     },
     {
@@ -229,7 +227,7 @@ export default function TournamentManager() {
           <strong>{agent1Label}</strong> vs <strong>{agent2Label}</strong>
         </div>
         <div style={{ flex: 1, textAlign: "right" }}>
-          {match.agent1_score.toFixed(1)} - {match.agent2_score.toFixed(1)}
+          {match.agent1_score} - {match.agent2_score}
         </div>
         <div style={{ flex: 1, textAlign: "right", color: "#374151" }}>
           {match.result === "bye" ? "Bye" : metadata.winner || match.result}

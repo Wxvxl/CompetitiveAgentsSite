@@ -6,7 +6,6 @@ from psycopg2 import errors
 import bcrypt
 import os
 import json
-from decimal import Decimal
 
 app = Flask(__name__)
 CORS(app, origins=["http://localhost:3000", "http://100.112.255.106:3000"], supports_credentials=True)
@@ -178,20 +177,20 @@ def play_agents_match(agent1_info, agent2_info, game):
 
     if winner == "X":
         winner_agent_id = agent1_info["agent_id"]
-        agent1_score = Decimal("1")
-        agent2_score = Decimal("0")
+        agent1_score = 1
+        agent2_score = 0
         result = "agent1"
         winner_label = agent1_info["agent_name"]
     elif winner == "O":
         winner_agent_id = agent2_info["agent_id"]
-        agent1_score = Decimal("0")
-        agent2_score = Decimal("1")
+        agent1_score = 0
+        agent2_score = 1
         result = "agent2"
         winner_label = agent2_info["agent_name"]
     else:
         winner_agent_id = None
-        agent1_score = Decimal("0.5")
-        agent2_score = Decimal("0.5")
+        agent1_score = 0
+        agent2_score = 0
         result = "draw"
         winner_label = "Draw"
 
@@ -211,10 +210,10 @@ def initialize_tournament_standings(cur, tournament_id, agents):
     for agent in agents:
         cur.execute(
             """
-            INSERT INTO tournament_standings (tournament_id, agent_id, points, buchholz, rounds_played)
-            VALUES (%s, %s, 0, 0, 0)
+            INSERT INTO tournament_standings (tournament_id, agent_id, points, rounds_played)
+            VALUES (%s, %s, 0, 0)
             ON CONFLICT (tournament_id, agent_id)
-            DO UPDATE SET points = EXCLUDED.points, buchholz = EXCLUDED.buchholz, rounds_played = EXCLUDED.rounds_played;
+            DO UPDATE SET points = EXCLUDED.points, rounds_played = EXCLUDED.rounds_played;
             """,
             (tournament_id, agent["agent_id"]),
         )
@@ -224,7 +223,7 @@ def initialize_tournament_standings(cur, tournament_id, agents):
             "groupname": agent["groupname"],
             "agent_name": agent["agent_name"],
             "file_path": agent["file_path"],
-            "points": Decimal("0"),
+            "points": 0,
             "opponents": set(),
             "rounds_played": 0,
             "got_bye": False,
@@ -298,10 +297,7 @@ def swiss_pairings(standings):
 def update_standing(cur, standings, tournament_id, agent_id, points_increment, opponent_id=None):
     """Update both in-memory standings and the persistent table. """
     entry = standings[agent_id]
-    if isinstance(points_increment, Decimal):
-        increment = points_increment
-    else:
-        increment = Decimal(str(points_increment))
+    increment = int(points_increment)
     entry["points"] += increment
     entry["rounds_played"] += 1
     if opponent_id is not None:
@@ -329,7 +325,7 @@ def record_tournament_match(cur, tournament_id, round_id, round_number, agent1, 
         "raw_winner": match_result["raw_winner"],
     }
     agent2_id = None
-    agent2_score = Decimal("0")
+    agent2_score = 0
     if agent2 is not None:
         metadata["agent2"] = {
             "group": agent2["groupname"],
@@ -1231,8 +1227,8 @@ def start_tournament():
                 bye_agent["got_bye"] = True
                 bye_result = {
                     "winner_agent_id": bye_agent_id,
-                    "agent1_score": Decimal("1"),
-                    "agent2_score": Decimal("0"),
+                    "agent1_score": 1,
+                    "agent2_score": 0,
                     "result": "bye",
                     "winner_label": bye_agent["agent_name"],
                     "raw_winner": "BYE",
@@ -1314,7 +1310,7 @@ def list_tournaments():
                 LEFT JOIN agents a ON ts.agent_id = a.agent_id
                 LEFT JOIN groups g ON a.group_id = g.group_id
                 WHERE ts.tournament_id = %s
-                ORDER BY ts.points DESC, ts.buchholz DESC, groupname
+                ORDER BY ts.points DESC, groupname
                 LIMIT 3
                 """,
                 (tournament_id,),
@@ -1322,7 +1318,7 @@ def list_tournaments():
             leaderboard = [
                 {
                     "agent_id": entry[0],
-                    "points": float(entry[1]) if entry[1] is not None else 0.0,
+                    "points": int(entry[1]) if entry[1] is not None else 0,
                     "rounds_played": entry[2],
                     "groupname": entry[3],
                     "agent_name": entry[4],
@@ -1420,8 +1416,8 @@ def tournament_detail(tournament_id):
                         "id": match[0],
                         "agent1_id": match[1],
                         "agent2_id": match[2],
-                        "agent1_score": float(match[3]) if match[3] is not None else 0.0,
-                        "agent2_score": float(match[4]) if match[4] is not None else 0.0,
+                        "agent1_score": int(match[3]) if match[3] is not None else 0,
+                        "agent2_score": int(match[4]) if match[4] is not None else 0,
                         "result": match[5],
                         "winner_agent_id": match[6],
                         "metadata": metadata,
@@ -1442,25 +1438,23 @@ def tournament_detail(tournament_id):
             SELECT ts.agent_id,
                    ts.points,
                    ts.rounds_played,
-                   ts.buchholz,
                    COALESCE(g.groupname, 'Unknown') AS groupname,
                    COALESCE(a.name, 'Unknown') AS agent_name
             FROM tournament_standings ts
             LEFT JOIN agents a ON ts.agent_id = a.agent_id
             LEFT JOIN groups g ON a.group_id = g.group_id
             WHERE ts.tournament_id = %s
-            ORDER BY ts.points DESC, ts.buchholz DESC, groupname
+            ORDER BY ts.points DESC, groupname
             """,
             (tournament_id,),
         )
         standings = [
             {
                 "agent_id": row[0],
-                "points": float(row[1]) if row[1] is not None else 0.0,
+                "points": int(row[1]) if row[1] is not None else 0,
                 "rounds_played": row[2],
-                "buchholz": float(row[3]) if row[3] is not None else 0.0,
-                "groupname": row[4],
-                "agent_name": row[5],
+                "groupname": row[3],
+                "agent_name": row[4],
             }
             for row in cur.fetchall()
         ]

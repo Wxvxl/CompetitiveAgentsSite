@@ -106,8 +106,8 @@ CREATE TABLE contests (
     winner_id INT REFERENCES agents(agent_id) ON DELETE SET NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'pending',
     created_by INT REFERENCES users(user_id) ON DELETE SET NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    completed_at TIMESTAMP
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMPTZ
 );
 """)
 
@@ -119,7 +119,7 @@ CREATE TABLE contest_actions (
     agent_id INT NOT NULL REFERENCES agents(agent_id) ON DELETE CASCADE,
     action_data TEXT NOT NULL,
     board_state TEXT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 """)
 

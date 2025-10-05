@@ -276,17 +276,18 @@ export default function TournamentManager() {
           </p>
 
           <div style={{ marginBottom: 24 }}>
-            <h5>Standings</h5>
+            <h5>Standings/LeaderBoard</h5>
             <Table<TournamentStanding>
               columns={standingsColumns}
               data={detail.standings}
               isLoading={loadingDetail}
-              emptyText="No standings yet"
+              emptyText="No standings result yet"
             />
           </div>
 
           <div>
-            <h5>Rounds</h5>
+            <h5>Rounds details</h5>
+            <p style={{color: "red"}}>BYE means non-match agent in this round</p>
             {detail.rounds.length === 0 ? (
               <p style={{ color: "#6b7280" }}>No rounds recorded.</p>
             ) : (

@@ -103,10 +103,7 @@ def fetch_latest_agent(groupname, game):
 # ------ Tournament Functions Below ------ #    
 
 def fetch_latest_agents_for_game(cur, game):
-    """
-    Fetch the latest agent for each group for a given game.
-    returns a list of dictionaries with keys: agent_id, group_id, groupname, agent_name, file_path
-    """
+    """Return each group's most recently uploaded agent metadata for the given game."""
     cur.execute(
         """
         SELECT DISTINCT ON (g.group_id)
@@ -136,10 +133,7 @@ def fetch_latest_agents_for_game(cur, game):
 
 
 def resolve_agent_path(game, groupname, file_path):
-    """
-
-    returns the absolute path if it exists, otherwise constructs a path based on the group and game structure.
-    """
+    """Resolve agent file path relative to game/student folders when a raw path is provided."""
     if not file_path:
         return file_path
 
@@ -164,7 +158,7 @@ def resolve_agent_path(game, groupname, file_path):
 
 
 def load_agent_class(filepath, class_name):
-    """Normalize path, validate existence, and return the agent class."""
+    """Import the agent class from a concrete file path, raising if the file is missing."""
     if not filepath:
         raise FileNotFoundError("Agent file path is missing.")
 
@@ -176,7 +170,12 @@ def load_agent_class(filepath, class_name):
 
 
 def play_agents_match(agent1_info, agent2_info, game):
-    """Run a match between two agent entries and return the result summary."""
+    """Execute a single game between two latest agents and return normalized scoring metadata.
+
+    Note:
+        Reusing the higher-level endpoint helper would require extra lookups/mocking that
+        reintroduce complexity and duplicated state.
+    """
     if game not in games:
         raise ValueError(f"Game '{game}' not found in configuration.")
 
@@ -229,7 +228,7 @@ def play_agents_match(agent1_info, agent2_info, game):
 
 
 def initialize_tournament_standings(cur, tournament_id, agents):
-    """Insert initial standings rows and return an in-memory standings map."""
+    """Seed standing rows (DB + in-memory) with zero points for all participating agents."""
     if not agents:
         return {}
 
@@ -259,7 +258,7 @@ def initialize_tournament_standings(cur, tournament_id, agents):
 
 
 def update_standing(cur, standings, tournament_id, agent_id, points_increment, opponent_id=None):
-    """Update both in-memory standings and the persistent table. """
+    """Apply a point delta for an agent, tracking rounds-played and opponent history."""
     entry = standings[agent_id]
     increment = int(points_increment)
     entry["points"] += increment
@@ -277,7 +276,7 @@ def update_standing(cur, standings, tournament_id, agent_id, points_increment, o
 
 
 def record_tournament_match(cur, tournament_id, round_id, round_number, agent1, agent2, match_result):
-    """Persist a tournament match outcome."""
+    """Persist the outcome of a tournament match, including metadata used by the UI."""
     raw_winner = match_result.get("raw_winner")
     normalized_winner = match_result.get("result")
 
@@ -1715,8 +1714,8 @@ def start_tournament():
 
             next_round = []
 
-            if len(bracket) % 2 == 1:
-                bye_agent_id = bracket.pop()
+            if len(bracket) % 2 == 1: # Handle bye if odd number of agents
+                bye_agent_id = bracket.pop() # last agent for bye
                 bye_agent = standings[bye_agent_id]
                 bye_result = {
                     "winner_agent_id": bye_agent_id,
@@ -1728,7 +1727,7 @@ def start_tournament():
                     "decision": "bye",
                     "advancing_agent_id": bye_agent_id,
                 }
-                update_standing(cur, standings, tournament_id, bye_agent_id, 1)
+                update_standing(cur, standings, tournament_id, bye_agent_id, 1) # Win for bye
                 record_tournament_match(cur, tournament_id, round_id, round_number, bye_agent, None, bye_result)
                 next_round.append(bye_agent_id)
 
@@ -1751,7 +1750,7 @@ def start_tournament():
                     update_standing(cur, standings, tournament_id, agent1_id, -1, opponent_id=agent2_id)
                     update_standing(cur, standings, tournament_id, agent2_id, 1, opponent_id=agent1_id)
                 else:
-                    decision = "tiebreak(draw)"  # No clear winner; choose advancement while keeping scores neutral.
+                    decision = "tiebreak(draw)"  # No winner; choose advancement while keeping scores neutral.
                     update_standing(cur, standings, tournament_id, agent1_id, 0, opponent_id=agent2_id)
                     update_standing(cur, standings, tournament_id, agent2_id, 0, opponent_id=agent1_id)
                     winner_id = random.choice((agent1_id, agent2_id))
@@ -1790,14 +1789,7 @@ def start_tournament():
 @app.route("/api/admin/tournaments", methods=["GET"])
 def list_tournaments():
     """
-
-    Returns:
-        200: {"tournaments": [ ... ]} containing id, name, game, status,
-             created_at ISO timestamp, completed_round count, and top leaderboard rows.
-
-    Errors:
-        401: {"error": "Unauthorized"}
-        500: {"error": str} when database access fails
+    Fetch summary of all tournaments with basic info and top 3 leaderboard.
     """
     if "role" not in session or session["role"] != "admin":
         return jsonify({"error": "Unauthorized"}), 401
@@ -1833,7 +1825,7 @@ def list_tournaments():
                 ORDER BY ts.points DESC, ts.rounds_played DESC, groupname
                 LIMIT 3
                 """,
-                (tournament_id,),
+                (tournament_id,), # Fetch top 3
             )
             leaderboard = [
                 {
@@ -1869,23 +1861,8 @@ def list_tournaments():
 
 @app.route("/api/admin/tournaments/<int:tournament_id>", methods=["GET"])
 def tournament_detail(tournament_id):
-    """Fetch full knockout bracket detail including rounds, matches, and standings.
-
-    Args:
-        tournament_id (int): Identifier of the tournament to inspect.
-
-    Returns:
-        200: {
-            "tournament": {...},
-            "rounds": [...],
-            "standings": [...]
-        }
-        with ISO timestamps and metadata per match.
-
-    Errors:
-        401: {"error": "Unauthorized"} if the caller is not an admin.
-        404: {"error": "Tournament not found"} when the id is invalid.
-        500: {"error": str} on database failures.
+    """
+    Fetch full knockout bracket detail including rounds, matches, and standings.
     """
     if "role" not in session or session["role"] != "admin":
         return jsonify({"error": "Unauthorized"}), 401
@@ -1916,7 +1893,7 @@ def tournament_detail(tournament_id):
             """,
             (tournament_id,),
         )
-        rounds = []
+        rounds = [] # Will hold all rounds with their matches
         for round_row in cur.fetchall():
             round_id, round_number, created_at = round_row
             cur.execute(

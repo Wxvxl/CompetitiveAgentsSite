@@ -7,24 +7,39 @@ class Game:
         if len(agents) != 2:
             raise ValueError("Rock-Paper-Scissors requires exactly 2 agents.")
         self.agents = agents
-        self.logs = []  # Store moves and winner for each round
+        self.logs = []   # record round details
+        self.board = []  # list form of match state (copyable)
+        self.round = 0
+
+    def update_board(self):
+        """Update board list for consistent backend logging."""
+        self.board = []
+        for i, log in enumerate(self.logs, start=1):
+            winner = (
+                "Agent1" if log["winner"] == [0, 1]
+                else "Agent2" if log["winner"] == [1, 0]
+                else "Draw"
+            )
+            self.board.append(
+                f"Round {i}: Agent1 -> {log['agent1']} | Agent2 -> {log['agent2']} | Winner: {winner}"
+            )
 
     def play_round(self):
         """
-        Plays a single round.
-        Returns [0,1] if agent1 wins,
-                [1,0] if agent2 wins,
-                None if tie.
+        Plays a single round and returns [0,1], [1,0], or None for draw.
         """
+        self.round += 1
         move1 = self.agents[0].move()
         move2 = self.agents[1].move()
 
         # Validate moves
         if move1 not in self.MOVES:
-            self.logs.append({"agent1": move1, "agent2": move2, "winner": "O"})
+            self.logs.append({"agent1": move1, "agent2": move2, "winner": [1, 0]})
+            self.update_board()
             return [1, 0]  # agent2 wins
         if move2 not in self.MOVES:
-            self.logs.append({"agent1": move1, "agent2": move2, "winner": "X"})
+            self.logs.append({"agent1": move1, "agent2": move2, "winner": [0, 1]})
+            self.update_board()
             return [0, 1]  # agent1 wins
 
         # Determine winner
@@ -42,28 +57,35 @@ class Game:
             "agent2": move2,
             "winner": winner
         })
+        self.update_board()
         return winner
 
     def play(self):
         """
-        Plays best-of-3 rounds and returns overall match result:
-        [0,1] if agent1 wins,
-        [1,0] if agent2 wins,
-        None if draw.
+        Plays best-of-3 rounds and returns overall result:
+        [0,1] if agent1 wins, [1,0] if agent2 wins, None if draw.
         """
         score = [0, 0]  # [agent1, agent2]
 
         while score[0] < 2 and score[1] < 2:
             winner = self.play_round()
-            if winner == [0,1]:
+            if winner == [0, 1]:
                 score[0] += 1
-            elif winner == [1,0]:
+            elif winner == [1, 0]:
                 score[1] += 1
-            # tie: do nothing
+            # tie = do nothing
 
         if score[0] == 2:
-            return [0,1]  # agent1 wins
+            final_winner = [0, 1]
         elif score[1] == 2:
-            return [1,0]  # agent2 wins
+            final_winner = [1, 0]
         else:
-            return None
+            final_winner = None
+
+        print("Final score:", score)
+        print("Match winner:", final_winner)
+        print("Match history:")
+        for line in self.board:
+            print(line)
+
+        return final_winner

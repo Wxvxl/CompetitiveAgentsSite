@@ -23,7 +23,8 @@ games = {
             ("randomagent.py", "C4RandomAgent")
         ],
         "gamesize" : 2, # Number of players
-        "agent": "C4Agent" # The agent name for every student.
+        "agent": "C4Agent",
+        "mode": "move" # The agent name for every student.
     },
     "tictactoe": {
        "module" : "games.tictactoe.game",
@@ -32,7 +33,8 @@ games = {
            ("random.py", "RandomAgent") 
        ],
        "gamesize" : 2, # Number of players
-       "agent" : "TTTAgent"
+       "agent" : "TTTAgent",
+       "mode" : "move"
     },
     "rps": {
         "module": "games.rps.game",
@@ -41,7 +43,8 @@ games = {
             ("random.py", "RandomAgent")
         ],
        "gamesize" : 2, # Number of players
-        "agent": "RPSAgent"
+        "agent": "RPSAgent",
+        "mode": "round"
     }
 }
 
@@ -379,88 +382,90 @@ def load_class_from_file(filepath, class_name):
     spec.loader.exec_module(module)
     return getattr(module, class_name)
 
+
 def run_tests_on_group(groupname, game):
     """
-    Run test games for a specific group and for a specific game. 
-    This will run matches between the latest uploaded agent for the agent and all of the provided testing agents as listed in the games dictionary.
-
-    Args:
-        groupname (str)
-        game (str): ID of the game, this must be one of the valid games in the games dict defined above
-
-    Raises:
-        # TODO: Check if the group exist or not. Need further error checking.
-        ValueError: Game is not found in the configuration
-
-    Returns:
-        Dictionary : Returns a dictionary that contains the results of all of the matches.
+    Run test games for a group's latest agent against test agents.
+    Supports both move-based (mode='move') and round-based (mode='round') games.
     """
     if game not in games:
         raise ValueError(f"Game '{game}' not found in configuration.")
     game_info = games[game]
-
-    game_module = __import__(game_info["module"], fromlist=["Game"])
-    GameClass = getattr(game_module, "Game")
+    GameClass = getattr(__import__(game_info["module"], fromlist=["Game"]), "Game")
 
     group_agent = fetch_latest_agent(groupname, game)
     if not group_agent:
         return {"error": f"No agent found for group: {groupname}"}
 
-    group_file = group_agent["file_path"]
-    group_class_name = game_info["agent"]
-
     results = {"group": groupname, "agent": group_agent["name"], "matches": []}
 
-    GroupAgentClass = load_class_from_file(group_file, group_class_name)
+    GroupAgentClass = load_class_from_file(group_agent["file_path"], game_info["agent"])
     group_agent_name = group_agent["name"]
 
     for test_file, test_class in game_info["tests"]:
         test_path = os.path.join("games", game, "agents", "test", test_file)
         TestAgentClass = load_class_from_file(test_path, test_class)
+        test_agent_name = test_class
 
-        test_agent_name = test_class  # <- move inside the loop
-
+        # instantiate game with list of agents
         game_instance = GameClass([GroupAgentClass(), TestAgentClass()])
-        result = game_instance.play()
 
-        if result[0] is None:
-            winner_name = "Draw"
-        elif result[0] == 0:
-            winner_name = group_agent_name
-        else:
-            winner_name = test_agent_name
-        
-        results["matches"].append({
-            "test_agent": test_agent_name,
-            "winner": winner_name
-        })
+        actions = []
+
+        mode = game_info.get("mode", "move")
+
+        if mode == "move":
+            # wrap agent move methods to capture moves and board state
+            original_moves = [getattr(a, "move") for a in game_instance.agents]
+            def make_wrapper(idx, orig):
+                def wrapper(*args, **kwargs):
+                    mv = orig(*args, **kwargs)
+                    bs = getattr(game_instance, "board", None)
+                    actions.append({"move_number": len(actions)+1, "agent_index": idx, "action": str(mv), "board_state": str(bs) if bs is not None else None})
+                    return mv
+                return wrapper
+            for idx, agent in enumerate(game_instance.agents):
+                agent.move = make_wrapper(idx, original_moves[idx])
+
+            result = game_instance.play()
+
+        else:  # round-based
+            # run play which should populate a logs/round_logs attribute or return logs
+            result = game_instance.play()
+            # Attempt to extract round logs
+            if hasattr(game_instance, "round_logs"):
+                for i, r in enumerate(game_instance.round_logs):
+                    actions.append({"round_number": i+1, "action": str(r), "board_state": None})
+            elif hasattr(game_instance, "logs"):
+                for i, entry in enumerate(game_instance.logs):
+                    actions.append({"round_number": i+1, "action": str(entry), "board_state": None})
+            else:
+                # fallback: if play returned logs
+                if isinstance(result, dict) and "logs" in result:
+                    for i, entry in enumerate(result["logs"]):
+                        actions.append({"round_number": i+1, "action": str(entry), "board_state": None})
+
+        # determine winner display
+        winner_display = "Draw"
+        if isinstance(result, list) and result is not None:
+            # expected [winner_index, loser_index] or [0,1] etc.
+            if result[0] is None:
+                winner_display = "Draw"
+            else:
+                winner_display = group_agent_name if result[0] == 0 else test_agent_name
+
+        results["matches"].append({"test_agent": test_agent_name, "winner": winner_display, "actions": actions})
 
     return results
 
 
+
 def run_group_vs_group(groups, game):
-    """
-    Run a single match between groups for a provided game.
-
-    Args:
-        groups (str) : List of group names that will be competing in the games. 
-        game (str): One of the valid game ID in the games dictionary.
-
-    Raises:
-        ValueError: The game is not found in the games dictionary and is not a valid game.
-
-    Returns:
-        dictionary : Returns a dictionary with the result of the game.
-    """
     if game not in games:
         raise ValueError(f"Game '{game}' not found in configuration.")
     game_info = games[game]
+    GameClass = getattr(__import__(game_info["module"], fromlist=["Game"]), "Game")
 
-    # Load Game class
-    game_module = __import__(game_info["module"], fromlist=["Game"])
-    GameClass = getattr(game_module, "Game")
-
-    # Fetch agents from each group
     agents_data = []
     for group in groups:
         agent = fetch_latest_agent(group, game)
@@ -468,37 +473,53 @@ def run_group_vs_group(groups, game):
             return {"error": f"No agent found for group: {group}"}
         agents_data.append(agent)
 
-    agent_class_name = game_info["agent"]
-    
-    if len(agents_data) != game_info["gamesize"]:
-        return {"error": f"Game '{game}' requires {game_info['gamesize']} players, but {len(agents_data)} agents provided."}
+    mode = game_info.get("mode", "move")
+    if len(agents_data) != game_info.get("gamesize", 2):
+        return {"error": f"Game '{game}' requires {game_info.get('gamesize',2)} players"}
 
-    # Load classes dynamically
-    agent_classes = []
-    for agent_data in agents_data:
-        AgentClass = load_class_from_file(agent_data["file_path"], agent_class_name)
-        agent_classes.append(AgentClass())
-        
-    # Run the match
-    game_instance = GameClass(agent_classes)  # Pass list of agents
-    result = game_instance.play()  # Returns [winner_index, loser_index] or similar
-    
-    if result is None:
-        winner_group = "Draw"
-        loser_group = "Draw"
+    # load agent classes and instances
+    agent_instances = []
+    for ad in agents_data:
+        AgentClass = load_class_from_file(ad["file_path"], game_info["agent"])
+        agent_instances.append(AgentClass())
+
+    game_instance = GameClass(agent_instances)
+    actions = []
+
+    if mode == "move":
+        orig_moves = [getattr(a, "move") for a in agent_instances]
+        def make_wrap(idx, orig):
+            def wrap(*args, **kwargs):
+                mv = orig(*args, **kwargs)
+                bs = getattr(game_instance, "board", None)
+                actions.append({"move_number": len(actions)+1, "agent_index": idx, "action": str(mv), "board_state": str(bs) if bs is not None else None})
+                return mv
+            return wrap
+        for idx,a in enumerate(agent_instances):
+            a.move = make_wrap(idx, orig_moves[idx])
+        result = game_instance.play()
     else:
-        winner_index = result[0]
-        loser_index = result[1]
-        winner_group = f"{groups[winner_index]} ({agents_data[winner_index]['name']})"
-        loser_group = f"{groups[loser_index]} ({agents_data[loser_index]['name']})"
+        result = game_instance.play()
+        if hasattr(game_instance, "round_logs"):
+            for i,r in enumerate(game_instance.round_logs):
+                actions.append({"round_number": i+1, "action": str(r), "board_state": None})
+        elif hasattr(game_instance, "logs"):
+            for i,r in enumerate(game_instance.logs):
+                actions.append({"round_number": i+1, "action": str(r), "board_state": None})
+
+    # determine winner
+    winner = None
+    if isinstance(result, list) and result is not None and result[0] is not None:
+        winner = groups[result[0]] + " (" + agents_data[result[0]]["name"] + ")"
 
     return {
-        "groups": [{"name": group, "agent": agents_data[i]["name"]} for i, group in enumerate(groups)],
-        "winner": winner_group,
-        "loser": loser_group
+        "groups": [{"name": groups[i], "agent": agents_data[i]["name"]} for i in range(len(groups))],
+        "winner": winner,
+        "actions": actions
     }
 
-@app.route("/api/admin/assign-group", methods=["POST"])
+
+
 def assign_group():
     """
     Assign a user to a group. Admin only endpoint.

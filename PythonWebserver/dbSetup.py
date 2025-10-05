@@ -44,6 +44,9 @@ cur = conn.cursor()
 # Schema
 # Drop existing tables first (in correct order due to foreign key constraints)
 cur.execute("""
+DROP TABLE IF EXISTS contest_actions CASCADE;
+DROP TABLE IF EXISTS contests CASCADE;
+DROP TABLE IF EXISTS agent_records CASCADE;
 DROP TABLE IF EXISTS tournament_matches CASCADE;
 DROP TABLE IF EXISTS tournament_rounds CASCADE;
 DROP TABLE IF EXISTS tournament_standings CASCADE;
@@ -93,6 +96,45 @@ CREATE TABLE matches (
     group1_id INT NOT NULL REFERENCES groups(group_id) ON DELETE CASCADE,
     group2_id INT NOT NULL REFERENCES groups(group_id) ON DELETE CASCADE,
     played_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+""")
+
+# Contest tables for FR3.x requirements
+cur.execute("""
+CREATE TABLE contests (
+    contest_id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    game VARCHAR(50) NOT NULL,
+    agent1_id INT NOT NULL REFERENCES agents(agent_id) ON DELETE CASCADE,
+    agent2_id INT NOT NULL REFERENCES agents(agent_id) ON DELETE CASCADE,
+    winner_id INT REFERENCES agents(agent_id) ON DELETE SET NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    created_by INT REFERENCES users(user_id) ON DELETE SET NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP
+);
+""")
+
+cur.execute("""
+CREATE TABLE contest_actions (
+    action_id SERIAL PRIMARY KEY,
+    contest_id INT NOT NULL REFERENCES contests(contest_id) ON DELETE CASCADE,
+    move_number INT NOT NULL,
+    agent_id INT NOT NULL REFERENCES agents(agent_id) ON DELETE CASCADE,
+    action_data TEXT NOT NULL,
+    board_state TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+""")
+
+cur.execute("""
+CREATE TABLE agent_records (
+    record_id SERIAL PRIMARY KEY,
+    agent_id INT NOT NULL REFERENCES agents(agent_id) ON DELETE CASCADE,
+    wins INT DEFAULT 0,
+    losses INT DEFAULT 0,
+    draws INT DEFAULT 0,
+    UNIQUE(agent_id)
 );
 """)
 

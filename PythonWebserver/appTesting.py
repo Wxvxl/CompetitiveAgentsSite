@@ -187,15 +187,14 @@ def test_run_tests_endpoint(groupname, game):
             return True
     return False
 
-def test_group_vs_group_endpoint(group1, group2, game):
+def test_group_vs_group_endpoint(groups, game):
     client = flask_app.test_client()
     
-    response = client.get(f'/play/group_vs_group/{group1}/{group2}/{game}')
+    response = client.get(f'/play/group_vs_group/{groups}/{game}')
     
     if response.status_code == 200:
         data = response.get_json()
-        # Check for expected structure (e.g., "group1", "group2", "winner")
-        if "group1" in data and "group2" in data and "winner" in data:
+        if "groups" in data and "winner" in data and "loser" in data:
             return True
     return False
 
@@ -232,8 +231,8 @@ assert test_run_tests_endpoint("group1", "tictactoe") == True
 print("Group against test-agents test passed")
 
 # Running group vs group
-assert test_group_vs_group_endpoint("group1", "group2", "conn4") == True
-assert test_group_vs_group_endpoint("group1", "group2", "tictactoe") == True
+assert test_group_vs_group_endpoint("group1,group2", "conn4") == True
+assert test_group_vs_group_endpoint("group1,group2", "tictactoe") == True
 print("Group vs Group endpoint test passed")
 print("All pytest checks passed!")
 

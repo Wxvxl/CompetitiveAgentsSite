@@ -5,10 +5,11 @@ import psycopg2
 from psycopg2 import errors
 import bcrypt
 import os
+import random
 import json
 
 app = Flask(__name__)
-CORS(app, origins=["http://localhost:3000", "http://100.112.255.106:3000"], supports_credentials=True)
+CORS(app, origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://100.112.255.106:3000"], supports_credentials=True)
 app.secret_key = os.getenv("SECRET_KEY", "your-secret-key")  # Use a strong secret in production
 
 DB_URL = os.getenv("DATABASE_URL") # Setup the DB url in a .env
@@ -20,6 +21,7 @@ games = {
             ("minimax.py", "C4MinimaxAgent"), # First entry is the test agent file, second is the class name.
             ("randomagent.py", "C4RandomAgent")
         ],
+        "gamesize" : 2, # Number of players
         "agent": "C4Agent" # The agent name for every student.
     },
     "tictactoe": {
@@ -28,6 +30,7 @@ games = {
            ("firstavail.py", "FirstAvailableAgent"),
            ("random.py", "RandomAgent") 
        ],
+       "gamesize" : 2, # Number of players
        "agent" : "TTTAgent"
     }
 }
@@ -430,15 +433,15 @@ def run_tests_on_group(groupname, game):
 
         test_agent_name = test_class  # <- move inside the loop
 
-        game_instance = GameClass(GroupAgentClass(), TestAgentClass())
-        winner = game_instance.play()
+        game_instance = GameClass([GroupAgentClass(), TestAgentClass()])
+        result = game_instance.play()
 
-        if winner == "X":
-            winner_name = group_agent_name
-        elif winner == "O":
-            winner_name = test_agent_name
-        else:
+        if result[0] is None:
             winner_name = "Draw"
+        elif result[0] == 0:
+            winner_name = group_agent_name
+        else:
+            winner_name = test_agent_name
         
         results["matches"].append({
             "test_agent": test_agent_name,
@@ -448,13 +451,12 @@ def run_tests_on_group(groupname, game):
     return results
 
 
-def run_group_vs_group(group1, group2, game):
+def run_group_vs_group(groups, game):
     """
-    Run a single match between two groups for a provided game.
+    Run a single match between groups for a provided game.
 
     Args:
-        group1 (str) : Groupname of the first group.
-        group2 (str) : Groupname of the second group.
+        groups (str) : List of group names that will be competing in the games. 
         game (str): One of the valid game ID in the games dictionary.
 
     Raises:
@@ -472,37 +474,42 @@ def run_group_vs_group(group1, group2, game):
     GameClass = getattr(game_module, "Game")
 
     # Fetch agents from each group
-    agent1 = fetch_latest_agent(group1, game)
-    agent2 = fetch_latest_agent(group2, game)
-
-    if not agent1:
-        return {"error": f"No agent found for group: {group1}"}
-    if not agent2:
-        return {"error": f"No agent found for group: {group2}"}
+    agents_data = []
+    for group in groups:
+        agent = fetch_latest_agent(group, game)
+        if not agent:
+            return {"error": f"No agent found for group: {group}"}
+        agents_data.append(agent)
 
     agent_class_name = game_info["agent"]
+    
+    if len(agents_data) != game_info["gamesize"]:
+        return {"error": f"Game '{game}' requires {game_info['gamesize']} players, but {len(agents_data)} agents provided."}
 
     # Load classes dynamically
-    Agent1Class = load_class_from_file(agent1["file_path"], agent_class_name)
-    Agent2Class = load_class_from_file(agent2["file_path"], agent_class_name)
-
+    agent_classes = []
+    for agent_data in agents_data:
+        AgentClass = load_class_from_file(agent_data["file_path"], agent_class_name)
+        agent_classes.append(AgentClass())
+        
     # Run the match
-    game_instance = GameClass(Agent1Class(), Agent2Class())
-    winner = game_instance.play()
-    if winner == "X":
-        winner_agent = agent1["name"]
-    elif winner == "O":
-        winner_agent = agent2["name"]
+    game_instance = GameClass(agent_classes)  # Pass list of agents
+    result = game_instance.play()  # Returns [winner_index, loser_index] or similar
+    
+    if result is None:
+        winner_group = "Draw"
+        loser_group = "Draw"
     else:
-        winner_agent = "Draw"
+        winner_index = result[0]
+        loser_index = result[1]
+        winner_group = f"{groups[winner_index]} ({agents_data[winner_index]['name']})"
+        loser_group = f"{groups[loser_index]} ({agents_data[loser_index]['name']})"
 
-    results = {
-        "group1": {"name": group1, "agent": agent1["name"]},
-        "group2": {"name": group2, "agent": agent2["name"]},
-        "winner": winner_agent
+    return {
+        "groups": [{"name": group, "agent": agents_data[i]["name"]} for i, group in enumerate(groups)],
+        "winner": winner_group,
+        "loser": loser_group
     }
-
-    return results
 
 @app.route("/api/admin/assign-group", methods=["POST"])
 def assign_group():
@@ -686,10 +693,11 @@ def play_group_vs_tests(groupname, game):
         traceback.print_exc()
         return jsonify({"error": str(e)}), 400
     
-@app.route("/play/group_vs_group/<group1>/<group2>/<game>", methods=["GET"])
-def play_group_vs_group(group1, group2, game):
+@app.route("/play/group_vs_group/<groups>/<game>", methods=["GET"])
+def play_group_vs_group(groups, game):
     try:
-        results = run_group_vs_group(group1, group2, game)
+        group_list = groups.split(',')  # Parse comma-separated groups into a list
+        results = run_group_vs_group(group_list, game)
         return jsonify(results)
     except Exception as e:
         return jsonify({"error": str(e)}), 400
@@ -1164,6 +1172,513 @@ def get_all_agents():
     finally:
         if conn:
             conn.close()
+
+
+# ==================== CONTEST MANAGEMENT ENDPOINTS (FR3.x) ====================
+
+@app.route("/api/contests", methods=["POST"])
+def create_contest():
+    """
+    FR3.1: Create a new contest between two agents.
+    
+    Request Body:
+        {
+            "name": string,
+            "game": string,
+            "agent1_id": int,
+            "agent2_id": int,
+            "auto_match": boolean (optional, for FR3.2)
+        }
+    
+    Response:
+        201: {
+            "message": "Contest created successfully",
+            "contest_id": int
+        }
+        400: {"error": "Missing required fields" | "Invalid agent IDs"}
+        401: {"error": "Unauthorized"}
+        500: {"error": error_message}
+    """
+    if "user_id" not in session:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    data = request.get_json()
+    name = data.get("name")
+    game = data.get("game")
+    agent1_id = data.get("agent1_id")
+    agent2_id = data.get("agent2_id")
+    auto_match = data.get("auto_match", False)
+    
+    if not name or not game:
+        return jsonify({"error": "Missing required fields"}), 400
+    
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # FR3.2: Auto-matching logic - if auto_match is True, select random agents
+        if auto_match:
+            cur.execute("""
+                SELECT agent_id FROM agents 
+                WHERE game = %s 
+                ORDER BY RANDOM() 
+                LIMIT 2
+            """, (game,))
+            agents = cur.fetchall()
+            if len(agents) < 2:
+                return jsonify({"error": "Not enough agents for auto-matching"}), 400
+            agent1_id = agents[0][0]
+            agent2_id = agents[1][0]
+        
+        if not agent1_id or not agent2_id:
+            return jsonify({"error": "Invalid agent IDs"}), 400
+        
+        # Verify agents exist and get their details
+        cur.execute("""
+            SELECT agent_id, name FROM agents 
+            WHERE agent_id IN (%s, %s)
+        """, (agent1_id, agent2_id))
+        agents = cur.fetchall()
+        
+        if len(agents) != 2:
+            return jsonify({"error": "One or both agents not found"}), 400
+        
+        # Create contest
+        cur.execute("""
+            INSERT INTO contests (name, game, agent1_id, agent2_id, created_by, status)
+            VALUES (%s, %s, %s, %s, %s, 'pending')
+            RETURNING contest_id
+        """, (name, game, agent1_id, agent2_id, session["user_id"]))
+        
+        contest_id = cur.fetchone()[0]
+        conn.commit()
+        cur.close()
+        
+        return jsonify({
+            "message": "Contest created successfully",
+            "contest_id": contest_id
+        }), 201
+        
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn:
+            conn.close()
+
+
+@app.route("/api/contests/<int:contest_id>/run", methods=["POST"])
+def run_contest(contest_id):
+    """
+    FR3.3: Execute a contest and track all actions throughout the match.
+    FR3.4: Update win/loss records for participating agents.
+    
+    Response:
+        200: {
+            "message": "Contest completed",
+            "winner_id": int,
+            "actions": [
+                {
+                    "move_number": int,
+                    "agent_id": int,
+                    "action": string,
+                    "board_state": string
+                }
+            ]
+        }
+        404: {"error": "Contest not found"}
+        400: {"error": "Contest already completed"}
+        500: {"error": error_message}
+    """
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # Fetch contest details
+        cur.execute("""
+            SELECT c.contest_id, c.game, c.agent1_id, c.agent2_id, c.status,
+                   a1.file_path as agent1_path, a2.file_path as agent2_path
+            FROM contests c
+            JOIN agents a1 ON c.agent1_id = a1.agent_id
+            JOIN agents a2 ON c.agent2_id = a2.agent_id
+            WHERE c.contest_id = %s
+        """, (contest_id,))
+        
+        contest = cur.fetchone()
+        if not contest:
+            return jsonify({"error": "Contest not found"}), 404
+        
+        if contest[4] == 'completed':
+            return jsonify({"error": "Contest already completed"}), 400
+        
+        game = contest[1]
+        agent1_id = contest[2]
+        agent2_id = contest[3]
+        agent1_path = contest[5]
+        agent2_path = contest[6]
+        
+        # Verify game exists in configuration
+        if game not in games:
+            return jsonify({"error": f"Game '{game}' not found in configuration"}), 400
+        
+        game_info = games[game]
+        
+        # Load game module and agent classes
+        game_module = __import__(game_info["module"], fromlist=["Game"])
+        GameClass = getattr(game_module, "Game")
+        
+        agent_class_name = game_info["agent"]
+        Agent1Class = load_class_from_file(agent1_path, agent_class_name)
+        Agent2Class = load_class_from_file(agent2_path, agent_class_name)
+        
+        # Create agent instances
+        agent1_instance = Agent1Class()
+        agent2_instance = Agent2Class()
+        
+        # Create game instance with NEW format (list of agents)
+        agent_instances = [agent1_instance, agent2_instance]
+        agent_ids = [agent1_id, agent2_id]
+        game_instance = GameClass(agent_instances)
+        
+        # Track actions during gameplay by wrapping the play() method
+        actions = []
+        move_number = 0
+        
+        # Monkey-patch the agents' move methods to capture actions
+        original_moves = [agent.move for agent in agent_instances]
+        
+        def create_tracked_move(agent_idx, original_move_func):
+            def tracked_move(*args, **kwargs):
+                move = original_move_func(*args, **kwargs)
+                # Capture the action
+                actions.append({
+                    "move_number": len(actions),
+                    "agent_id": agent_ids[agent_idx],
+                    "action": str(move),
+                    "board_state": str(game_instance.board.copy())
+                })
+                return move
+            return tracked_move
+        
+        # Apply tracking wrappers
+        for idx, agent in enumerate(agent_instances):
+            agent.move = create_tracked_move(idx, original_moves[idx])
+        
+        # Run the game with NEW return format
+        result = game_instance.play()
+        
+        # Determine winner from NEW format
+        # result is [winner_index, loser_index] or None for draw
+        winner_id = None
+        
+        if result is not None:
+            winner_index = result[0]
+            winner_id = agent_ids[winner_index]
+        # If result is None, it's a draw (winner_id stays None)
+        
+        # Update contest status
+        cur.execute("""
+            UPDATE contests 
+            SET status = 'completed', winner_id = %s, completed_at = CURRENT_TIMESTAMP
+            WHERE contest_id = %s
+        """, (winner_id, contest_id))
+        
+        # Save all actions to database (FR3.3)
+        for action in actions:
+            cur.execute("""
+                INSERT INTO contest_actions (contest_id, move_number, agent_id, action_data, board_state)
+                VALUES (%s, %s, %s, %s, %s)
+            """, (contest_id, action["move_number"], action["agent_id"], 
+                  action["action"], action["board_state"]))
+        
+        # Update agent records (FR3.4)
+        for agent_id in [agent1_id, agent2_id]:
+            # Ensure record exists
+            cur.execute("""
+                INSERT INTO agent_records (agent_id, wins, losses, draws)
+                VALUES (%s, 0, 0, 0)
+                ON CONFLICT (agent_id) DO NOTHING
+            """, (agent_id,))
+        
+        if winner_id:
+            # Update winner's wins
+            cur.execute("""
+                UPDATE agent_records 
+                SET wins = wins + 1 
+                WHERE agent_id = %s
+            """, (winner_id,))
+            
+            # Update loser's losses
+            loser_id = agent2_id if winner_id == agent1_id else agent1_id
+            cur.execute("""
+                UPDATE agent_records 
+                SET losses = losses + 1 
+                WHERE agent_id = %s
+            """, (loser_id,))
+        else:
+            # It's a draw
+            cur.execute("""
+                UPDATE agent_records 
+                SET draws = draws + 1 
+                WHERE agent_id IN (%s, %s)
+            """, (agent1_id, agent2_id))
+        
+        conn.commit()
+        cur.close()
+        
+        return jsonify({
+            "message": "Contest completed",
+            "winner_id": winner_id,
+            "actions": actions
+        }), 200
+        
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn:
+            conn.close()
+
+
+@app.route("/api/contests", methods=["GET"])
+def get_contests():
+    """
+    Retrieve all contests or filter by status.
+    
+    Query Parameters:
+        status: string (optional) - Filter by status: 'pending', 'completed', 'all'
+    
+    Response:
+        200: {
+            "contests": [
+                {
+                    "contest_id": int,
+                    "name": string,
+                    "game": string,
+                    "agent1_id": int,
+                    "agent1_name": string,
+                    "agent2_id": int,
+                    "agent2_name": string,
+                    "winner_id": int,
+                    "status": string,
+                    "created_at": string,
+                    "completed_at": string
+                }
+            ]
+        }
+        500: {"error": error_message}
+    """
+    status_filter = request.args.get('status', 'all')
+    
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        query = """
+            SELECT c.contest_id, c.name, c.game, 
+                   c.agent1_id, a1.name as agent1_name,
+                   c.agent2_id, a2.name as agent2_name,
+                   c.winner_id, c.status, c.created_at, c.completed_at
+            FROM contests c
+            JOIN agents a1 ON c.agent1_id = a1.agent_id
+            JOIN agents a2 ON c.agent2_id = a2.agent_id
+        """
+        
+        if status_filter != 'all':
+            query += " WHERE c.status = %s"
+            cur.execute(query + " ORDER BY c.created_at DESC", (status_filter,))
+        else:
+            cur.execute(query + " ORDER BY c.created_at DESC")
+        
+        contests = cur.fetchall()
+        cur.close()
+        
+        return jsonify({
+            "contests": [
+                {
+                    "contest_id": contest[0],
+                    "name": contest[1],
+                    "game": contest[2],
+                    "agent1_id": contest[3],
+                    "agent1_name": contest[4],
+                    "agent2_id": contest[5],
+                    "agent2_name": contest[6],
+                    "winner_id": contest[7],
+                    "status": contest[8],
+                    "created_at": contest[9].isoformat() if contest[9] else None,
+                    "completed_at": contest[10].isoformat() if contest[10] else None
+                }
+                for contest in contests
+            ]
+        }), 200
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn:
+            conn.close()
+
+
+@app.route("/api/contests/<int:contest_id>", methods=["GET"])
+def get_contest_details(contest_id):
+    """
+    Get detailed information about a specific contest including all actions.
+    
+    Response:
+        200: {
+            "contest": {
+                "contest_id": int,
+                "name": string,
+                "game": string,
+                "agent1": {"id": int, "name": string, "group": string},
+                "agent2": {"id": int, "name": string, "group": string},
+                "winner_id": int,
+                "status": string,
+                "created_at": string,
+                "completed_at": string
+            },
+            "actions": [
+                {
+                    "move_number": int,
+                    "agent_id": int,
+                    "agent_name": string,
+                    "action": string,
+                    "board_state": string
+                }
+            ]
+        }
+        404: {"error": "Contest not found"}
+        500: {"error": error_message}
+    """
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # Fetch contest details
+        cur.execute("""
+            SELECT c.contest_id, c.name, c.game,
+                   c.agent1_id, a1.name as agent1_name, g1.groupname as group1,
+                   c.agent2_id, a2.name as agent2_name, g2.groupname as group2,
+                   c.winner_id, c.status, c.created_at, c.completed_at
+            FROM contests c
+            JOIN agents a1 ON c.agent1_id = a1.agent_id
+            JOIN agents a2 ON c.agent2_id = a2.agent_id
+            JOIN groups g1 ON a1.group_id = g1.group_id
+            JOIN groups g2 ON a2.group_id = g2.group_id
+            WHERE c.contest_id = %s
+        """, (contest_id,))
+        
+        contest = cur.fetchone()
+        if not contest:
+            return jsonify({"error": "Contest not found"}), 404
+        
+        # Fetch actions
+        cur.execute("""
+            SELECT ca.move_number, ca.agent_id, a.name, ca.action_data, ca.board_state
+            FROM contest_actions ca
+            JOIN agents a ON ca.agent_id = a.agent_id
+            WHERE ca.contest_id = %s
+            ORDER BY ca.move_number
+        """, (contest_id,))
+        
+        actions = cur.fetchall()
+        cur.close()
+        
+        return jsonify({
+            "contest": {
+                "contest_id": contest[0],
+                "name": contest[1],
+                "game": contest[2],
+                "agent1": {"id": contest[3], "name": contest[4], "group": contest[5]},
+                "agent2": {"id": contest[6], "name": contest[7], "group": contest[8]},
+                "winner_id": contest[9],
+                "status": contest[10],
+                "created_at": contest[11].isoformat() if contest[11] else None,
+                "completed_at": contest[12].isoformat() if contest[12] else None
+            },
+            "actions": [
+                {
+                    "move_number": action[0],
+                    "agent_id": action[1],
+                    "agent_name": action[2],
+                    "action": action[3],
+                    "board_state": action[4]
+                }
+                for action in actions
+            ]
+        }), 200
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn:
+            conn.close()
+
+
+@app.route("/api/agents/<int:agent_id>/record", methods=["GET"])
+def get_agent_record(agent_id):
+    """
+    FR3.4: Get win/loss/draw record for a specific agent.
+    
+    Response:
+        200: {
+            "agent_id": int,
+            "agent_name": string,
+            "wins": int,
+            "losses": int,
+            "draws": int,
+            "total_contests": int
+        }
+        404: {"error": "Agent not found"}
+        500: {"error": error_message}
+    """
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # Fetch agent info and record
+        cur.execute("""
+            SELECT a.agent_id, a.name, 
+                   COALESCE(ar.wins, 0) as wins,
+                   COALESCE(ar.losses, 0) as losses,
+                   COALESCE(ar.draws, 0) as draws
+            FROM agents a
+            LEFT JOIN agent_records ar ON a.agent_id = ar.agent_id
+            WHERE a.agent_id = %s
+        """, (agent_id,))
+        
+        agent = cur.fetchone()
+        if not agent:
+            return jsonify({"error": "Agent not found"}), 404
+        
+        cur.close()
+        
+        wins = agent[2]
+        losses = agent[3]
+        draws = agent[4]
+        
+        return jsonify({
+            "agent_id": agent[0],
+            "agent_name": agent[1],
+            "wins": wins,
+            "losses": losses,
+            "draws": draws,
+            "total_contests": wins + losses + draws
+        }), 200
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn:
+            conn.close()
+
 
 
 @app.route("/api/admin/tournaments", methods=["POST"])

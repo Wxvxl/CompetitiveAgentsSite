@@ -3,6 +3,7 @@ import Link from "next/link"; // Import Link from Next.js
 import RoleGuard from "../../components/auth/RoleGuard";
 import AgentList from "../../components/agents/AgentList";
 import UserGroupManagement from "../../components/admin/UserGroupManagement";
+import TournamentManager from "../../components/admin/TournamentManager";
 
 export default function AdminPage() {
   return (
@@ -24,6 +25,9 @@ export default function AdminPage() {
             </Link>
           </div>
           <AgentList scope="all" />
+        </div>
+        <div className="mt-8">
+          <TournamentManager />
         </div>
       </section>
     </RoleGuard>

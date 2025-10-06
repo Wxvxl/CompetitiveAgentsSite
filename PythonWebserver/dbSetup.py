@@ -47,6 +47,10 @@ cur.execute("""
 DROP TABLE IF EXISTS contest_actions CASCADE;
 DROP TABLE IF EXISTS contests CASCADE;
 DROP TABLE IF EXISTS agent_records CASCADE;
+DROP TABLE IF EXISTS tournament_matches CASCADE;
+DROP TABLE IF EXISTS tournament_rounds CASCADE;
+DROP TABLE IF EXISTS tournament_standings CASCADE;
+DROP TABLE IF EXISTS tournaments CASCADE;
 DROP TABLE IF EXISTS matches CASCADE;
 DROP TABLE IF EXISTS agents CASCADE;
 DROP TABLE IF EXISTS users CASCADE;
@@ -131,6 +135,60 @@ CREATE TABLE agent_records (
     losses INT DEFAULT 0,
     draws INT DEFAULT 0,
     UNIQUE(agent_id)
+);
+""")
+
+# Tournament related tables
+# Note: Added round_number to tournament_matches for easier querying
+cur.execute("""
+CREATE TABLE tournaments (
+    tournament_id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    game VARCHAR(50) NOT NULL,
+    rounds INT,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    created_by INT REFERENCES users(user_id),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+""")
+
+cur.execute("""
+CREATE TABLE tournament_rounds (
+    round_id SERIAL PRIMARY KEY,
+    tournament_id INT NOT NULL REFERENCES tournaments(tournament_id) ON DELETE CASCADE,
+    round_number INT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (tournament_id, round_number)
+);
+""")
+
+cur.execute("""
+CREATE TABLE tournament_matches (
+    tournament_match_id SERIAL PRIMARY KEY,
+    tournament_id INT NOT NULL REFERENCES tournaments(tournament_id) ON DELETE CASCADE,
+    round_id INT NOT NULL REFERENCES tournament_rounds(round_id) ON DELETE CASCADE,
+    round_number INT NOT NULL,
+    agent1_id INT NOT NULL REFERENCES agents(agent_id),
+    agent2_id INT REFERENCES agents(agent_id),
+    agent1_score INTEGER DEFAULT 0,
+    agent2_score INTEGER DEFAULT 0,
+    result VARCHAR(20) DEFAULT 'pending',
+    winner_agent_id INT REFERENCES agents(agent_id),
+    metadata JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (tournament_id, round_number, agent1_id, agent2_id)
+);
+""")
+
+cur.execute("""
+CREATE TABLE tournament_standings (
+    standing_id SERIAL PRIMARY KEY,
+    tournament_id INT NOT NULL REFERENCES tournaments(tournament_id) ON DELETE CASCADE,
+    agent_id INT NOT NULL REFERENCES agents(agent_id) ON DELETE CASCADE,
+    points INTEGER DEFAULT 0,
+    rounds_played INT DEFAULT 0,
+    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (tournament_id, agent_id)
 );
 """)
 

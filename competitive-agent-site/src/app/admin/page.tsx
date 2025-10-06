@@ -2,6 +2,7 @@
 import RoleGuard from "../../components/auth/RoleGuard";
 import AgentList from "../../components/agents/AgentList";
 import UserGroupManagement from "../../components/admin/UserGroupManagement";
+import TournamentManager from "../../components/admin/TournamentManager";
 
 export default function AdminPage() {
   return (
@@ -15,6 +16,9 @@ export default function AdminPage() {
         <div>
           <h3>All Uploaded Agents</h3>
           <AgentList scope="all" />
+        </div>
+        <div className="mt-8">
+          <TournamentManager />
         </div>
       </section>
     </RoleGuard>

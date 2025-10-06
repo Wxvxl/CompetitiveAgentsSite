@@ -198,21 +198,46 @@ def test_run_tests_endpoint(groupname, game):
     
     if response.status_code == 200:
         data = response.get_json()
-        # Check for expected structure (e.g., "group", "agent", "matches")
-        if "group" in data and "matches" in data:
+        # Works with both old and new formats
+        if isinstance(data, dict) and "group" in data and "matches" in data:
+            print(f"run_tests OK for {groupname}-{game}")
             return True
+        else:
+            print(f"Unexpected response structure: {data}")
+    else:
+        print(f"run_tests failed: {response.status_code}")
     return False
+
 
 def test_group_vs_group_endpoint(groups, game):
     client = flask_app.test_client()
-    
     response = client.get(f'/play/group_vs_group/{groups}/{game}')
     
     if response.status_code == 200:
         data = response.get_json()
-        if "groups" in data and "winner" in data and "loser" in data:
+
+        # ✅ Expected keys for both move-based and round-based games
+        has_groups = "groups" in data and isinstance(data["groups"], list)
+        has_winner = "winner" in data
+        has_actions = "actions" in data and isinstance(data["actions"], list)
+
+        if has_groups and has_winner and has_actions:
+            print(f"group_vs_group OK for {groups}-{game}")
             return True
+        
+        # Legacy format (older API)
+        elif "groups" in data and "winner" in data and "loser" in data:
+            print(f"group_vs_group OK (legacy format) for {groups}-{game}")
+            return True
+
+        # Debug unexpected structures
+        print(f"Unexpected group_vs_group response: {data}")
+    else:
+        print(f"group_vs_group failed: HTTP {response.status_code}")
+    
     return False
+
+
 
 # Register Tests
 assert test_register("testuser1", "testuser1@test.com", "password", "student") == True
@@ -254,6 +279,7 @@ assert test_group_vs_group_endpoint("group1,group2", "tictactoe") == True
 assert test_group_vs_group_endpoint("group1,group2", "rps") == True
 print("Group vs Group endpoint test passed")
 print("All pytest checks passed!")
+
 
 cur.close()
 conn.close()

@@ -148,7 +148,7 @@ CREATE TABLE tournaments (
     rounds INT,
     status VARCHAR(20) NOT NULL DEFAULT 'pending',
     created_by INT REFERENCES users(user_id),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 """)
 
@@ -157,7 +157,7 @@ CREATE TABLE tournament_rounds (
     round_id SERIAL PRIMARY KEY,
     tournament_id INT NOT NULL REFERENCES tournaments(tournament_id) ON DELETE CASCADE,
     round_number INT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (tournament_id, round_number)
 );
 """)
@@ -175,7 +175,7 @@ CREATE TABLE tournament_matches (
     result VARCHAR(20) DEFAULT 'pending',
     winner_agent_id INT REFERENCES agents(agent_id),
     metadata JSONB,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (tournament_id, round_number, agent1_id, agent2_id)
 );
 """)
@@ -187,7 +187,7 @@ CREATE TABLE tournament_standings (
     agent_id INT NOT NULL REFERENCES agents(agent_id) ON DELETE CASCADE,
     points INTEGER DEFAULT 0,
     rounds_played INT DEFAULT 0,
-    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_updated TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (tournament_id, agent_id)
 );
 """)

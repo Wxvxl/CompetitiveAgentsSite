@@ -10,6 +10,7 @@ class Game:
         self.logs = []   # record round details
         self.board = []  # list form of match state (copyable)
         self.round = 0
+        self.max_rounds = 3  # prevent infinite loops        
 
     def update_board(self):
         """Update board list for consistent backend logging."""
@@ -67,7 +68,7 @@ class Game:
         """
         score = [0, 0]  # [agent1, agent2]
 
-        while score[0] < 2 and score[1] < 2:
+        while score[0] < 2 and score[1] < 2 and self.round < self.max_rounds:
             winner = self.play_round()
             if winner == [0, 1]:
                 score[0] += 1
@@ -75,12 +76,13 @@ class Game:
                 score[1] += 1
             # tie = do nothing
 
-        if score[0] == 2:
+        #
+        if (score[0] == 2) or (score[0]==1 and score[1]==0):
             final_winner = [0, 1]
-        elif score[1] == 2:
+        elif (score[1] == 2) or (score[1]==1 and score[0]==0):
             final_winner = [1, 0]
         else:
-            final_winner = None
+            final_winner = None 
 
         print("Final score:", score)
         print("Match winner:", final_winner)

@@ -4,8 +4,8 @@ from agents.test.random import RandomAgent
 
 if __name__ == "__main__":
     agents = [
-        ("RockAgent", RockAgent()),
-        ("RandomAgent", RandomAgent())
+        ("RockAgent", RockAgent),
+        ("RandomAgent", RandomAgent)
     ]
 
     for i in range(len(agents)):
@@ -15,7 +15,7 @@ if __name__ == "__main__":
             name1, agent1 = agents[i]
             name2, agent2 = agents[j]
             print(f"Match: {name1} (agent1) vs {name2} (agent2)")
-            game = Game([agent1, agent2])
+            game = Game([agent1(), agent2()])
             result = game.play()
             if result is None:
                 print("Result: Draw")

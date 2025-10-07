@@ -8,6 +8,9 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      TZ: Australia/Perth
+      PGTZ: Australia/Perth
+
     ports:
       - "5431:5432"
     volumes:

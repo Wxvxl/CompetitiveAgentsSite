@@ -59,6 +59,7 @@ type TournamentDetail = {
 const GAME_OPTIONS = [
   { value: "conn4", label: "Conn 4" },
   { value: "tictactoe", label: "Tic Tac Toe" },
+  { value: "rps", label: "Rock Paper Scissors" }
 ];
 
 export default function TournamentManager() {

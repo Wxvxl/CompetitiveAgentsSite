@@ -519,7 +519,7 @@ def run_group_vs_group(groups, game):
     }
 
 
-
+@app.route("/api/admin/assign-group", methods=["POST"])
 def assign_group():
     """
     Assign a user to a group. Admin only endpoint.

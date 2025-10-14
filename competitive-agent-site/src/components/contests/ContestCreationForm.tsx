@@ -114,6 +114,7 @@ export default function ContestCreationForm({
         >
           <option value="conn4">Connect 4</option>
           <option value="tictactoe">Tic-Tac-Toe</option>
+          <option value="rps">Rock-Paper-Scissors</option>
         </select>
       </div>
 

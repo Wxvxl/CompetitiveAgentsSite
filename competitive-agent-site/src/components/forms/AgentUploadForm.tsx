@@ -47,7 +47,7 @@ export default function AgentUploadForm({
       });
       const data = await res.json();
       setMessage(data.message || data.error || "");
-      if (res.ok && onUploaded) onUploaded(file.name);
+      if (res.ok && onUploaded) onUploaded(data.agent.file_path);
       if (res.ok) {
         setFile(null);
         window.dispatchEvent(new Event("agentUploaded"));
@@ -67,7 +67,8 @@ export default function AgentUploadForm({
         style={{ marginRight: 8 }}
       >
         <option value="conn4">Connect 4</option>
-        <option value="TTT">Tic Tac Toe</option>
+        <option value="tictactoe">Tic Tac Toe</option>
+        <option value="rps">Rock Paper Scissors</option>
       </select>
       <input
         type="file"

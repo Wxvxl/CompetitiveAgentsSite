@@ -23,18 +23,19 @@ CompetitiveAgentsSite/
    npm install --prefix competitive-agent-site
    ```
 2. Configure backend environment variables  
-   Create `PythonWebserver/.env` with values that match your Docker/PostgreSQL setup:
+   Create `PythonWebserver/.env` with values that match Docker/PostgreSQL setup (the defaults below align with `docker-compose.yml` and `dbSetup.py`):
    ```env
-   POSTGRES_DB=casite
-   POSTGRES_PASSWORD=change-me
-   SECRET_KEY=super-secret-value
-   DATABASE_URL=postgresql://postgres:change-me@db:5432/casite
+   POSTGRES_DB=test
+   POSTGRES_USER=postgres
+   POSTGRES_PASSWORD=admin
+   SECRET_KEY=project-challenge-secret
+   DATABASE_URL=postgresql://postgres:admin@db:5432/test
+
    ```
-3. Start backend services
+3. Start backend services (this runs `dbSetup.py` and `appTesting.py` before starting Flask, so the database is recreated on each launch)
    ```bash
    cd PythonWebserver
    docker compose up --build
-   docker compose exec app python dbSetup.py   # destructive; run on first launch or when resetting
    ```
 4. Launch the frontend
    ```bash
@@ -42,7 +43,10 @@ CompetitiveAgentsSite/
    npm run dev
    ```
 5. Open http://localhost:3000 (API defaults to http://localhost:5001).  
-   Override the API origin by creating `competitive-agent-site/.env.local` with `NEXT_PUBLIC_API_BASE=http://localhost:5001`.
+   Override the API origin by creating `competitive-agent-site/.env.local`:
+   ```env
+   NEXT_PUBLIC_API_BASE=http://localhost:5001
+   ```
 
 ## Working with the Frontend (`competitive-agent-site/`)
 - `npm run dev` – start the Next.js dev server with hot reload on `app/page.tsx` and other routes
@@ -51,9 +55,9 @@ CompetitiveAgentsSite/
 - `npm run lint` – run ESLint using the project configuration
 
 ## Working with the Backend (`PythonWebserver/`)
-- `docker compose up --build` – build and start the Flask API + PostgreSQL stack
-- `docker compose exec app python dbSetup.py` – recreate tables (drops data; avoid during real tournaments)
-- `docker compose exec app python appTesting.py` – run API smoke tests against the current schema
+- `docker compose up --build` – build and start the Flask API + PostgreSQL stack (runs `dbSetup.py` + `appTesting.py` automatically)
+- `docker compose exec app python dbSetup.py` – manually recreate tables (destructive; use to reset the environment)
+- `docker compose exec app python appTesting.py` – re-run API smoke tests after manual changes
 - Games must live under `PythonWebserver/games/` and expose a `Game` class with `play()` returning the match result; see inline comments and existing games for guidance.
 
 ## Further Reading
@@ -62,4 +66,3 @@ CompetitiveAgentsSite/
 - `CONTEST_IMPLEMENTATION.md`
 - `TESTING_CONTESTS.md`
 - `FILES_CHANGED_CONTESTS.md`
-
